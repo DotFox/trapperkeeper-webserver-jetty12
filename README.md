@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/puppetlabs/trapperkeeper-webserver-jetty12.png?branch=master)](https://travis-ci.org/puppetlabs/trapperkeeper-webserver-jetty12)
+[![Build Status](https://github.com/dotfox/trapperkeeper-webserver-jetty12/actions/workflows/lein-test.yaml/badge.svg)](https://github.com/dotfox/trapperkeeper-webserver-jetty12/actions/workflows/lein-test.yaml)
 
 ## Trapperkeeper Webserver Service
 
@@ -7,7 +7,7 @@ This project provides a webserver service for use with the
 To use this service in your trapperkeeper application, simply add this
 project as a dependency in your leiningen project file:
 
-[![Clojars Project](http://clojars.org/puppetlabs/trapperkeeper-webserver-jetty12/latest-version.svg)](http://clojars.org/puppetlabs/trapperkeeper-webserver-jetty12)
+[![Clojars Project](https://img.shields.io/clojars/v/dev.dotfox/trapperkeeper-webserver-jetty12.svg)](https://clojars.org/dev.dotfox/trapperkeeper-webserver-jetty12)
 
 Then add the webserver service to your [`bootstrap.cfg`](https://github.com/puppetlabs/trapperkeeper#bootstrapping)
 file, via:
