@@ -719,11 +719,11 @@
 
 
 (deftest graceful-shutdown-test
-  (testing "jetty12 webservers shut down gracefully by default"
+  (testing "jetty12 webservers shut down gracefully when configured"
     (with-app-with-config
       app
       [jetty12-service]
-      jetty-plaintext-config
+      {:webserver {:port 8080 :shutdown-timeout-seconds 5}}
       (let [s (tk-app/get-service app :WebserverService)
             add-ring-handler   (partial add-ring-handler s)
             in-request-handler (promise)

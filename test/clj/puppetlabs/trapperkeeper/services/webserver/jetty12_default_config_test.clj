@@ -149,6 +149,15 @@ react accordingly."
                                  (get-server-thread-pool-queue server)))
         "Unexpected default for 'queue-max-size'")))
 
+(deftest service-default-stop-timeout-test
+  (with-app-with-config app
+    [jetty12-service]
+    {:webserver {:port 0}}
+    (let [s (get-service app :WebserverService)
+          server (get-in (service-context s) [:jetty12-servers :default :server])]
+      (is (= 0 (.getStopTimeout server))
+          "Service should preserve Jetty's default 'shutdown-timeout-seconds' when omitted"))))
+
 (defn required-threads-for-sized-threadpool-per-connector
   [threadpool-size]
   "The total number of threads needed per attached connector. This scales
@@ -160,4 +169,3 @@ react accordingly."
   (+ (reserved-thread-count threadpool-size)
      (selector-thread-count threadpool-size)
      acceptor-thread-count))
-

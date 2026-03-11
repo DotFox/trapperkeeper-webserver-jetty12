@@ -86,9 +86,9 @@
 ;;;
 ;;; Timeouts
 ;;;
-;;; The stop timeout is the graceful shutdown period beteween when a server is asked to stop and when
-;; any open connections are closed.  This default came from Jetty 9.4, which changed to 0 in Jetty 10
-(def default-shutdown-timeout-seconds 30)
+;;; Graceful shutdown timeout is intentionally not defaulted here. When a TK
+;;; app omits `shutdown-timeout-seconds`, the service falls through to Jetty's
+;;; implicit server stop timeout.
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Schemas
@@ -458,4 +458,3 @@
       (throw (IllegalArgumentException.
                ^String (i18n/trs "Either host, port, ssl-host, or ssl-port must be specified on the config in order for the server to be started"))))
     result))
-

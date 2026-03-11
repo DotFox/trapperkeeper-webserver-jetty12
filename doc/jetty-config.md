@@ -368,7 +368,7 @@ Use Jetty's built-in `CustomRequestLog` with SLF4J for access logging instead.
 ### `shutdown-timeout-seconds`
 
 Optional. This is an integer representing the desired graceful stop timeout in seconds.
-Defaults to 30 seconds.
+If omitted, Jetty's default server stop timeout is used. In Jetty 12, that default is `0`.
 
 ### `post-config-script`
 

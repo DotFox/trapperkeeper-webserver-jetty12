@@ -493,10 +493,12 @@
     (.setAllowNullPathInContext ^ServletContextHandler handler (not enable-trailing-slash-redirect?)))
   (.addHandler (:handlers webserver-context) handler)
   ;; If this handler is being added after the server has been started, we
-  ;; need to manually start the handler.  In Jetty 12, dynamically added
-  ;; handlers are not auto-started by ContextHandlerCollection.
+  ;; need to mark it as managed and manually start it. In Jetty 12,
+  ;; dynamically added handlers are added as unmanaged beans and are not
+  ;; auto-started by ContextHandlerCollection.
   (let [server (:server webserver-context)]
     (when (and server (.isRunning server) (not (.isRunning handler)))
+      (.manage (:handlers webserver-context) handler)
       (.start handler)))
   handler)
 
@@ -504,6 +506,14 @@
   "Returns a jakarta Servlet for the given Ring handler."
   [handler]
   (servlet/servlet handler))
+
+(defn- enable-legacy-ambiguous-uri-decoding!
+  [^ServletContextHandler handler]
+  ;; Jetty 12 adds a servlet-layer ambiguous URI check on top of connector URI
+  ;; compliance. Enable decoding here to preserve the Jetty 10 behavior that
+  ;; our LEGACY UriCompliance setting is intended to emulate.
+  (.setDecodeAmbiguousURIs (.getServletHandler handler) true)
+  handler)
 
 (schema/defn ^:always-validate
   proxy-servlet :- ProxyServlet
@@ -528,7 +538,10 @@
                          :https "https"
                          "http" target-scheme
                          "https" target-scheme))
-              context-path (.getPathInfo req)]
+              ;; Jetty 12 returns nil here for an exact context-path match.
+              ;; Preserve the historical proxy behavior by treating that case
+              ;; as the target root rather than dropping the trailing slash.
+              context-path (or (.getPathInfo req) "/")]
           (let [target-uri (URI. scheme
                                  nil
                                  (:host target)
@@ -711,7 +724,8 @@
         ;; Build handler chain from inside out:
         ;; ContextHandlerCollection -> maybe-gzip -> maybe-size-restricted -> MDC -> maybe-statistics
         inner-handler         (:handlers webserver-context)
-        shutdown-timeout      (* 1000 (:shutdown-timeout-seconds options config/default-shutdown-timeout-seconds))
+        shutdown-timeout      (when-some [timeout-seconds (:shutdown-timeout-seconds options)]
+                                (* 1000 timeout-seconds))
         maybe-zipped          (if (:gzip-enable options true)
                                 (gzip-handler inner-handler)
                                 inner-handler)
@@ -765,6 +779,7 @@
                    ;; Use ServletContextHandler when context listeners are needed
                    (let [sch (ServletContextHandler. context-path ServletContextHandler/NO_SESSIONS)
                          resource (.newResource (ResourceFactory/of sch) abs-path)]
+                     (enable-legacy-ambiguous-uri-decoding! sch)
                      (.setBaseResource sch resource)
                      (when follow-links?
                        (.addAliasCheck sch (org.eclipse.jetty.server.SymlinkAllowedResourceAliasChecker. sch)))
@@ -813,6 +828,7 @@
         ctxt-handler (doto (ServletContextHandler.)
                        (.setContextPath path)
                        (.addServlet (ServletHolder. ^jakarta.servlet.Servlet servlet) "/*"))]
+    (enable-legacy-ambiguous-uri-decoding! ctxt-handler)
     (when normalize-request-uri?
       (normalized-uri-helpers/add-normalized-uri-filter-to-servlet-handler! ctxt-handler))
     (add-handler webserver-context ctxt-handler enable-trailing-slash-redirect?)))
@@ -864,6 +880,7 @@
         handler (doto (ServletContextHandler. ServletContextHandler/SESSIONS)
                   (.setContextPath path)
                   (.addServlet holder "/*"))]
+    (enable-legacy-ambiguous-uri-decoding! handler)
     (when normalize-request-uri?
       (normalized-uri-helpers/add-normalized-uri-filter-to-servlet-handler!
        handler))
@@ -882,6 +899,7 @@
   (let [handler (doto (WebAppContext.)
                   (.setContextPath path)
                   (.setWar war))]
+    (.setDecodeAmbiguousURIs (.getServletHandler handler) true)
     (when normalize-request-uri?
       (normalized-uri-helpers/add-normalized-uri-filter-to-servlet-handler!
        handler))
