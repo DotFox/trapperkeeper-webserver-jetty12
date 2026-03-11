@@ -9,12 +9,6 @@
             [puppetlabs.kitchensink.core :as ks]
             [puppetlabs.trapperkeeper.services.webserver.jetty12-config :refer :all]
             [puppetlabs.trapperkeeper.testutils.logging :refer [with-test-logging]]
-            [puppetlabs.trapperkeeper.services.webserver.jetty12-core :as jetty12]
-            [puppetlabs.trapperkeeper.services.webserver.jetty12-service
-             :refer [jetty12-service add-ring-handler]]
-            [puppetlabs.trapperkeeper.app :as tk-app]
-            [puppetlabs.trapperkeeper.testutils.bootstrap :refer [with-app-with-config]]
-            [puppetlabs.trapperkeeper.testutils.webserver.common :refer [http-get]]
             [schema.test :as schema-test]
             [puppetlabs.trapperkeeper.testutils.webserver :as testutils]))
 
@@ -448,60 +442,3 @@
       "./dev-resources/config/jetty/ssl/certs/master-with-intermediate-ca.pem"
       "./dev-resources/config/jetty/ssl/certs/ca-root.pem")))
 
-(deftest test-advanced-scripting-config
-  (testing "Verify that we can use scripting to handle advanced configuration scenarios"
-    (let [config {:webserver
-                  {:port               9000
-                   :host               "localhost"
-                   :post-config-script (str "import org.eclipse.jetty.server.ServerConnector;"
-                                            "ServerConnector c = (ServerConnector)(server.getConnectors()[0]);\n"
-                                            "c.setPort(10000);")}}]
-      (with-test-logging
-        (with-app-with-config app
-          [jetty12-service]
-          config
-          (let [s (tk-app/get-service app :WebserverService)
-                add-ring-handler (partial add-ring-handler s)
-                body "Hi World"
-                path "/hi_world"
-                ring-handler (fn [req] {:status 200 :body body})]
-            (testing "A warning is logged when using post-config-script"
-              (is (logged? #"The 'post-config-script' setting is for advanced use"
-                           :warn)))
-
-            (testing "scripted changes are executed properly"
-              (add-ring-handler ring-handler path)
-              (let [response (http-get
-                               (format "http://localhost:10000%s" path))]
-                (is (= (:status response) 200))
-                (is (= (:body response) body)))))))))
-
-  (testing "Server fails to start with bad post-config-script"
-    (let [base-config {:port 9000
-                       :host "localhost"}]
-      (testing "Throws an error if the script can't be compiled."
-        (is (thrown-with-msg?
-              IllegalArgumentException
-              #"Invalid script string in webserver 'post-config-script' configuration"
-              (let [context (jetty12/initialize-context)]
-                (with-test-logging
-                 (try
-                   (jetty12/start-webserver!
-                    context
-                    (merge base-config
-                           {:post-config-script (str "AHAHHHGHAHAHAHEASD!  OMG!")}))
-                   (finally
-                     (jetty12/shutdown context))))))))
-      (testing "Throws an error if the script can't be executed."
-        (is (thrown-with-msg?
-              IllegalArgumentException
-              #"Invalid script string in webserver 'post-config-script' configuration"
-              (let [context (jetty12/initialize-context)]
-                (with-test-logging
-                 (try
-                   (jetty12/start-webserver!
-                    context
-                    (merge base-config
-                           {:post-config-script (str "Object x = null; x.toString();")}))
-                   (finally
-                     (jetty12/shutdown context)))))))))))

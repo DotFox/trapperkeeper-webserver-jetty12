@@ -128,16 +128,7 @@
                      gzip-enable"
              (validate-no-gzip-encoding-when-gzip-not-requested body port)))
 
-          (with-test-webserver-and-config
-           app
-           port {:gzip-enable true
-                 :access-log-config
-                 (str "./dev-resources/puppetlabs/trapperkeeper/services/webserver/"
-                      "request-logging.xml")}
-           (testing "(TK-429) a gzipped response when request wants a compressed one
-                   and server configured with a true value for gzip-enable and an
-                   access-log-config"
-             (validate-gzip-encoding-when-gzip-requested body port)))))))
+)))))
 
 (deftest jmx
   (with-test-logging

@@ -1,5 +1,5 @@
 (ns puppetlabs.trapperkeeper.services.webserver.normalized-uri-helpers-test
-  (:import (javax.servlet.http HttpServletRequest))
+  (:import (jakarta.servlet.http HttpServletRequest))
   (:require [clojure.test :refer :all]
             [puppetlabs.trapperkeeper.services.webserver.normalized-uri-helpers
              :as normalized-uri-helpers]))

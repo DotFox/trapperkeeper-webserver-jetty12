@@ -13,8 +13,8 @@
             [schema.test :as schema-test])
   (:import (java.nio.file Files Paths)
            (java.nio.file.attribute FileAttribute)
-           (javax.servlet ServletContextListener)
-           (javax.servlet.http HttpServlet HttpServletRequest HttpServletResponse)
+           (jakarta.servlet ServletContextListener)
+           (jakarta.servlet.http HttpServlet HttpServletRequest HttpServletResponse)
            (servlet SimpleServlet)))
 
 (use-fixtures :once
