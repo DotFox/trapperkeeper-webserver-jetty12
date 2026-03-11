@@ -15,12 +15,10 @@ file, via:
     puppetlabs.trapperkeeper.services.webserver.jetty12-service/jetty12-service
 
 Note that this implementation of the
-`:WebserverService` interface is based on Jetty 12.  This service requires JDK 17 or greater;
+`:WebserverService` interface is based on Jetty 12 (ee10 environment with `jakarta.servlet`).
+This service requires JDK 17 or greater;
 however, the interface is intended to be agnostic to the underlying web server
-implementation.  We also provide a
-[Jetty 9 version of the service](https://github.com/puppetlabs/trapperkeeper-webserver-jetty9),
-which can be used interchangeably with this one and will support older JDKs.
-You should only need to change your lein dependencies and your `bootstrap.cfg`
+implementation.  You should only need to change your lein dependencies and your `bootstrap.cfg`
 file--no code changes.
 
 The web server is configured via the
@@ -84,10 +82,6 @@ Then your routes will be served at `/my-app/foo` and `my-app/bar`.
 You may specify `""` as the value for `path` if you are only registering a single
 handler and do not need to prefix the URL.
 
-In the handler, in the request passed to it, under the `:response` key is the
-[`Response`](https://www.eclipse.org/jetty/javadoc/jetty-10/org/eclipse/jetty/server/Response.html) that is used
-to deliver the response from the server.
-
 There is also a three argument version of this function which takes these arguments:
 `[handler path options]`. `options` is a map containing three optional keys.
 
@@ -100,7 +94,7 @@ leaving out `:server-id` will not work in a multiserver set-up if no default ser
 
 The second optional argument is `:redirect-if-no-trailing-slash`. When set to `true`,
 all requests made to the endpoint at which the ring-handler was registered will, if
-no trailing slash is present, return a 302 redirect response to the same URL but with a trailing slash
+no trailing slash is present, return a 301 redirect response to the same URL but with a trailing slash
 added. If the option is set to `false`, no redirect will occur, and the request will be
 routed through to the registered handler. This option defaults to `false`.
 
@@ -305,13 +299,12 @@ boolean indicating whether or not symbolic links
 should be served. The service does NOT serve symbolic links by default.
 
 The value stored in `:context-listeners` is a list of objects implementing the
-[ServletContextListener] (http://docs.oracle.com/javaee/7/api/javax/servlet/ServletContextListener.html)
+[ServletContextListener](https://jakarta.ee/specifications/servlet/6.0/apidocs/jakarta.servlet/jakarta/servlet/servletcontextlistener)
 interface. These listeners are registered with the context created for serving the
 static content and receive notifications about the lifecycle events in the context
 as defined in the ServletContextListener interface. Of particular interest is the
 `contextInitialized` event notification as it provides access to the configuration
-of the context through the methods defined in the [ServletContext]
-(http://docs.oracle.com/javaee/7/api/javax/servlet/ServletContext.html)
+of the context through the methods defined in the [ServletContext](https://jakarta.ee/specifications/servlet/6.0/apidocs/jakarta.servlet/jakarta/servlet/servletcontext)
 interface. This opens up wide possibilities for customizing the context - in an
 extreme case the context originally capable of serving just the static content can
 be changed through this mechanism to a fully dynamic web application (in fact this
@@ -323,7 +316,7 @@ a container for hosting an arbitrary ruby rack application - see [here]
 #### `add-servlet-handler`
 
 `add-servlet-handler` takes two arguments: `[servlet path]`.  The `servlet` argument
-is a normal Java [Servlet](http://docs.oracle.com/javaee/7/api/javax/servlet/Servlet.html).
+is a normal Java [Servlet](https://jakarta.ee/specifications/servlet/6.0/apidocs/jakarta.servlet/jakarta/servlet/servlet).
 The `path` is the URL prefix at which the servlet will be registered.
 
 There is also a three argument version of the function which takes these arguments:
@@ -560,12 +553,11 @@ HTTPS client, regardless of the SSL configuration of the main web server.
 #####`:rewrite-uri-callback-fn`
 
 This option lets you provide a function to manipulate the rewritten target URI. The
-function is called in the overridden implementation of
-[`rewriteURI`](http://download.eclipse.org/jetty/stable-9/apidocs/org/eclipse/jetty/proxy/ProxyServlet.html#rewriteURI(javax.servlet.http.HttpServletRequest))
-method after the target URI is computed. It must take two arguments, `[target-uri req]`, where `target-uri` is a
-[`URI`](http://docs.oracle.com/javase/7/docs/api/java/net/URI.html)
+function is called in the overridden implementation of the `rewriteURI` method after
+the target URI is computed. It must take two arguments, `[target-uri req]`, where `target-uri` is a
+[`URI`](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/net/URI.html)
 and `req` is an
-[`HttpServletRequest`](http://docs.oracle.com/javaee/6/api/javax/servlet/http/HttpServletRequest.html).
+[`HttpServletRequest`](https://jakarta.ee/specifications/servlet/6.0/apidocs/jakarta.servlet/jakarta/servlet/http/httpservletrequest).
 `target-uri` will be modified and returned by the function.
 
 An example with a rewrite URI callback function:
@@ -592,12 +584,10 @@ to `http://localhost:11111/errors/unsupported-method`.
 #####`:callback-fn`
 
 This option lets you provide a function to manipulate the request object.  The
-function will be passed to the
-[`customizeProxyRequest`](http://download.eclipse.org/jetty/stable-9/apidocs/org/eclipse/jetty/proxy/ProxyServlet.html#customizeProxyRequest%28org.eclipse.jetty.client.api.Request,%20javax.servlet.http.HttpServletRequest%29)
-method. It must take two arguments, `[proxy-req req]`, where `proxy-req` is a
-[`Request`](http://download.eclipse.org/jetty/stable-9/apidocs/org/eclipse/jetty/client/api/Request.html)
-and `req` is an
-[`HttpServletRequest`](http://docs.oracle.com/javaee/6/api/javax/servlet/http/HttpServletRequest.html).
+function will be passed to the `customizeProxyRequest` method. It must take two
+arguments, `[proxy-req req]`, where `proxy-req` is a Jetty
+`org.eclipse.jetty.client.Request` and `req` is an
+[`HttpServletRequest`](https://jakarta.ee/specifications/servlet/6.0/apidocs/jakarta.servlet/jakarta/servlet/http/httpservletrequest).
 `proxy-req` will be modified and returned by the function.
 
 An example with a callback function:
@@ -612,7 +602,10 @@ An example with a callback function:
          :path "/bar"}
         "/foo"
         {:callback-fn (fn [proxy-req req]
-          (.header proxy-req "x-example" "baz"))})
+          (.headers proxy-req
+            (reify java.util.function.Consumer
+              (accept [_ headers]
+                (.put headers "x-example" "baz")))))})
     context))
 ```
 
@@ -620,9 +613,8 @@ In this example, all incoming requests with a prefix of `foo` will be proxied
 to `https://localhost:10000/bar`, using the same scheme (HTTP/HTTPS) that the
 original request used, and using the SSL context of the main webserver. In
 addition, a header `"x-example"` with the value `"baz"` will be added to the
-request before it is proxied, using the
-[`header`](http://download.eclipse.org/jetty/stable-9/apidocs/org/eclipse/jetty/client/api/Request.html#header%28java.lang.String,%20java.lang.String%29)
-method.
+request before it is proxied. Note that in Jetty 12, request headers are modified
+via the `.headers(Consumer<HttpFields.Mutable>)` method rather than `.header(name, value)`.
 
 #### `override-webserver-settings!`
 
@@ -690,7 +682,7 @@ version of this function will not work in a multiserver set-up if no default ser
 #### `get-registered-endpoints`
 
 This function returns a map containing information on each URL endpoint
-registered by the Jetty10 service on the default server. Each key in the map is a URL
+registered by the Jetty 12 service on the default server. Each key in the map is a URL
 endpoint, with each value being an array of maps containing information on each handler
 registered at that URL endpoint. The possible keys appearing in these maps are:
 

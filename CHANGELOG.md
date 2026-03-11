@@ -1,4 +1,13 @@
 ## unreleased changes
+- Migrate from Jetty 10 to Jetty 12 (ee10) with `jakarta.servlet`
+- Replace `javax.servlet` with `jakarta.servlet` 6.0
+- Replace `ring-servlet` with `ring-jakarta-servlet`
+- Rewrite WebSocket module to use Jetty 12 core WebSocket API (`ServerWebSocketContainer`)
+- Remove logback-access support (use Jetty's built-in `CustomRequestLog` instead)
+- Remove `post-config-script` feature (Janino scripting)
+- Require JDK 17+
+- Trailing slash redirects now return 301 (was 302)
+- `ring-jakarta-servlet` no longer includes `:response` key in ring request map
 
 ## 1.0.18
 - update to clj-parent 7.3.5

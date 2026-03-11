@@ -1,0 +1,14 @@
+# Build artifacts
+target/
+.lein-failures
+.lein-repl-history
+
+# Compiled classes in resources
+resources/puppetlabs/**/*.class
+resources/locales.clj
+
+# IDE / editor
+.idea/
+*.iml
+.nrepl-port
+.cpcache/

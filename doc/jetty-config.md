@@ -99,7 +99,7 @@ set the SO_LINGER for the socket as of v9.4.12.
 
 The Jetty maintainers discovered this option has undefined behavior on
 non-blocking connections (and all underlying connections became non-blocking
-in Jetty 9.0).
+in Jetty 9.0). This setting is retained for documentation purposes only.
 
 The actual behavior, though undefined by the Java spec, also changes between
 Java versions (so a user on Java 8 will see different behavior on Java 11) and
@@ -326,7 +326,7 @@ Then the static content in the `web-assets` directory would be mounted at the UR
 `"/assets"` on your server during initialization, and you could access the contents of
 `image.jpg` by visiting `"http://localhost:8080/assets/image.jpg"`.
 
-By default, symbolic links will not be served by the Jetty10 Webservice. However, if you have
+By default, symbolic links will not be served by the Jetty 12 Webservice. However, if you have
 a symbolic link that you want to serve as static content, you can add an extra option,
 `follow-links`, to the specification for a piece of static content. The value of this should
 be a boolean, and if set to true, symbolic links will be served.
@@ -362,26 +362,8 @@ the webserver may skip compression for a sufficiently small response body.
 
 ### `access-log-config`
 
-Optional. This is a path to an XML file containing configuration information
-for the `Logback-access` module. If present, a logger will be set up to log
-information about any HTTP requests Jetty receives according to the logging configuration,
-as long as the XML file pointed to exists and is valid. Information on configuring the
-`Logback-access` module is available [here](http://logback.qos.ch/access.html#configuration).
-
-An example configuration file can be found [here](request-logging-example-config.xml). This
-example configures a `FileAppender` that outputs to a file, `access.log`, in the `dev-resources`
-directory. The `pattern` element configures the output format to match the [Apache Combined Log Format](https://httpd.apache.org/docs/2.4/logs.html#combined).
-See the [Logback access layout documentation](https://logback.qos.ch/manual/layouts.html#logback-access)
-for a list of other items that can be added to the `pattern` element.
-
-TrapperKeeper configures the `Logback-access` library with additional support
-for the SLF4J [Mapped Diagnostic Context](https://logback.qos.ch/manual/mdc.html) (MDC).
-This support allows the `%X` and `%mdc` conversion words to be used in the `Logback-access`
-`pattern` which behave as described in the [docs for Logback-classic](https://logback.qos.ch/manual/layouts.html#mdc).
-Jetty is configured to clear any items added to the MDC at the end of each request
-so that incorrect data won't show up in subsequent requests that are handled by
-the same worker thread.
-
+**Removed in Jetty 12.** The `Logback-access` module is no longer supported.
+Use Jetty's built-in `CustomRequestLog` with SLF4J for access logging instead.
 
 ### `shutdown-timeout-seconds`
 
@@ -390,32 +372,11 @@ Defaults to 30 seconds.
 
 ### `post-config-script`
 
-Optional.  This setting is for advanced use cases only, and is intended for
-debugging purposes.  You can use it to modify low-level Jetty settings that
-are not directly exposed in our normal configuration options.  In most cases,
-if you find yourself using this, it is an indicator that we need to expose
-additional settings directly in our main configuration (so please let us know!).
-Also, the implementation details of this setting may change between releases.
-
-If you do need to use this, you can set the value to a String containing some
-Java code that should be executed against the Jetty `Server` object.  This object
-will be injected into the scope of your code in a variable named `server`.
-
-Here is a pathological example that shows how you could change the port that
-your server listens on (which you could achieve in a much simpler fashion by
-using the existing `port` setting; this example is only for the purposes of
-illustration):
-
-    post-config-script: "import org.eclipse.jetty.server.ServerConnector;
-                         ServerConnector c = (ServerConnector)(server.getConnectors()[0]);
-                         c.setPort(10000);"
-
-For more info on the Jetty `Server` object model, see the
-[Jetty API documentation](https://www.eclipse.org/jetty/javadoc/jetty-10/org/eclipse/jetty/server/Server.html).
+**Removed in Jetty 12.** The Janino scripting feature is no longer supported.
 
 ## Configuring multiple webservers on isolated ports
 
-It is possible to configure multiple webservers on isolated ports within a single Jetty10
+It is possible to configure multiple webservers on isolated ports within a single Jetty 12
 webservice. In order to configure multiple webservers, change the `webserver` section of your
 Trapperkeeper configuration files to be a nested map. Each key in this map is the id of a server, and
 its value is the configuration for that server.
@@ -437,8 +398,8 @@ webserver: {
 }
 ```
 
-This configuration would cause the Jetty10 service to create two different Jetty servers on isolated
-ports. You can then specify which server you would like to add handlers to when calling the Jetty10
+This configuration would cause the Jetty 12 service to create two different Jetty servers on isolated
+ports. You can then specify which server you would like to add handlers to when calling the Jetty 12
 service functions, and they will be added to the server you specify.
 
 Please note that, with the above configuration, you MUST specify a server-id when calling a service
@@ -486,11 +447,11 @@ webserver: {
 }
 ```
 
-In this case, the Jetty10 Service will simply create a single webserver and give it id `:default`,
+In this case, the Jetty 12 Service will simply create a single webserver and give it id `:default`,
 and will automatically make this server the default server.
 
 ### `jmx-enable`
 
-Optional. When enabled this setting will register the Jetty 10 MBeans so they are visible via
-JMX. Useful for monitoring the state of your Jetty 10 instance while it is running; for monitoring and
+Optional. When enabled this setting will register the Jetty 12 MBeans so they are visible via
+JMX. Useful for monitoring the state of your Jetty 12 instance while it is running; for monitoring and
 debugging purposes. Defaults to `true`.
