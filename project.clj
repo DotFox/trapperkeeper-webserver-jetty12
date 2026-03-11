@@ -1,3 +1,19 @@
+(def deploy-releases-url
+  (or (System/getenv "DEPLOY_RELEASES_URL")
+      "https://clojars.org/repo"))
+
+(def deploy-snapshots-url
+  (or (System/getenv "DEPLOY_SNAPSHOTS_URL")
+      deploy-releases-url))
+
+(def deploy-username
+  (or (System/getenv "DEPLOY_USERNAME")
+      :env/clojars_username))
+
+(def deploy-password
+  (or (System/getenv "DEPLOY_PASSWORD")
+      :env/clojars_password))
+
 (defproject dev.dotfox/trapperkeeper-webserver-jetty12 "2.0.0-SNAPSHOT"
   :description "A jetty12-based webserver implementation for use with the puppetlabs/trapperkeeper service framework."
   :url "https://github.com/dotfox/trapperkeeper-webserver-jetty12"
@@ -44,13 +60,13 @@
 
   :plugins [[puppetlabs/i18n "0.8.0"]]
 
-  :deploy-repositories [["releases" {:url "https://clojars.org/repo"
-                                      :username :env/clojars_username
-                                      :password :env/clojars_password
+  :deploy-repositories [["releases" {:url deploy-releases-url
+                                      :username deploy-username
+                                      :password deploy-password
                                       :sign-releases false}]
-                         ["snapshots" {:url "https://clojars.org/repo"
-                                       :username :env/clojars_username
-                                       :password :env/clojars_password}]]
+                         ["snapshots" {:url deploy-snapshots-url
+                                       :username deploy-username
+                                       :password deploy-password}]]
 
   ;; By declaring a classifier here and a corresponding profile below we'll get an additional jar
   ;; during `lein jar` that has all the code in the test/ directory. Downstream projects can then
