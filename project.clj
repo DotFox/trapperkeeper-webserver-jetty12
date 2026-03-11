@@ -14,7 +14,7 @@
   (or (System/getenv "DEPLOY_PASSWORD")
       :env/clojars_password))
 
-(defproject dev.dotfox/trapperkeeper-webserver-jetty12 "2.0.0-SNAPSHOT"
+(defproject dev.dotfox/trapperkeeper-webserver-jetty12 "2.0.3-SNAPSHOT"
   :description "A jetty12-based webserver implementation for use with the puppetlabs/trapperkeeper service framework."
   :url "https://github.com/dotfox/trapperkeeper-webserver-jetty12"
   :license {:name "Apache License, Version 2.0"
