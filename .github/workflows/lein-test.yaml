@@ -5,10 +5,10 @@ on:
   push:
     branches:
       - main
-    paths: ['src/**','test/**', 'project.clj']
+    paths: ['src/**','test/**', 'java/**', 'project.clj']
   pull_request:
     types: [opened, reopened, edited, synchronize]
-    paths: ['src/**','test/**', 'project.clj']
+    paths: ['src/**','test/**', 'java/**', 'project.clj']
 
 jobs:
   run-lein-tests:
@@ -16,25 +16,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java: [ '11', '17' ]
+        java: [ '17', '21' ]
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Setup java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: ${{ matrix.java }}
-      - name: Install Clojure tools
-        uses: DeLaGuardo/setup-clojure@10.2
+      - name: Install Leiningen
+        uses: DeLaGuardo/setup-clojure@13.2
         with:
-          cli: latest              # Clojure CLI based on tools.deps
-          lein: latest                  # Leiningen
-          boot: latest                  # Boot.clj
-          bb: latest                    # Babashka
-          clj-kondo: latest        # Clj-kondo
-          cljstyle: latest             # cljstyle
-          zprint: latest                # zprint
+          lein: latest
       - name: Run lein tests with dev test profile
         run: lein with-profile dev test
       - name: Run lein tests with fips profile
