@@ -2,7 +2,7 @@
   (:require [puppetlabs.i18n.core :as i18n]
             [ring.util.servlet :as servlet]
             [schema.core :as schema])
-  (:import (com.puppetlabs.trapperkeeper.services.webserver.jetty10.utils
+  (:import (com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils
              HttpServletRequestWithAlternateRequestUri)
            (java.util EnumSet)
            (javax.servlet DispatcherType Filter)

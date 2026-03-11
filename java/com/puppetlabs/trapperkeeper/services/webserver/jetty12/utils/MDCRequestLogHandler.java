@@ -1,4 +1,4 @@
-package com.puppetlabs.trapperkeeper.services.webserver.jetty10.utils;
+package com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils;
 
 import java.io.IOException;
 import java.util.Map;
@@ -23,7 +23,7 @@ import org.slf4j.MDC;
  *   https://github.com/jetty-project/jetty-and-logback-example/blob/master/jetty-slf4j-mdc-handler/src/main/java/org/eclipse/jetty/examples/logging/MDCHandler.java
  */
 public class MDCRequestLogHandler extends RequestLogHandler {
-  public static final String MDC_ATTR = "com.puppetlabs.trapperkeeper.services.webserver.jetty10.MDC";
+  public static final String MDC_ATTR = "com.puppetlabs.trapperkeeper.services.webserver.jetty12.MDC";
 
   @Override
   public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)

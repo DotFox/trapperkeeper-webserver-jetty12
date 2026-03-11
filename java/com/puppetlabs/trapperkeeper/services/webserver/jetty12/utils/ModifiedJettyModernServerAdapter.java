@@ -1,4 +1,4 @@
-package com.puppetlabs.trapperkeeper.services.webserver.jetty10.utils;
+package com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils;
 
 import ch.qos.logback.access.jetty.JettyModernServerAdapter;
 import org.eclipse.jetty.http.HttpField;
@@ -22,7 +22,7 @@ public class ModifiedJettyModernServerAdapter extends JettyModernServerAdapter {
     /**
      * buildResponseMap
      * This is a replacement of the buildResponseLog in JettyModernServerAdapter to
-     * make it compatible with Jetty 10 responses. The provided version of logback-acccess
+     * make it compatible with Jetty 12 responses. The provided version of logback-acccess
      * has a different signature expectation for "getHttpFields" which causes runtime failures.
      * @return a map of the headers.
      */

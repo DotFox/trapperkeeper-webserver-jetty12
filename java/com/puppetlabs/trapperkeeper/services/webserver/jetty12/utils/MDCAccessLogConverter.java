@@ -1,4 +1,4 @@
-package com.puppetlabs.trapperkeeper.services.webserver.jetty10.utils;
+package com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils;
 
 import java.util.Map;
 

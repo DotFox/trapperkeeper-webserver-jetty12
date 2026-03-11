@@ -1,4 +1,4 @@
-package com.puppetlabs.trapperkeeper.services.webserver.jetty10.utils;
+package com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils;
 
 import ch.qos.logback.access.jetty.JettyServerAdapter;
 import ch.qos.logback.access.jetty.RequestLogImpl;
@@ -13,7 +13,7 @@ import org.eclipse.jetty.server.Response;
 import java.util.Iterator;
 
 /**
- * Provide an alternative RequestLogImpl implementation that is compatible with Jetty 10
+ * Provide an alternative RequestLogImpl implementation that is compatible with Jetty 12
  */
 public class ModifiedRequestLogImpl extends RequestLogImpl {
     // unfortunately, this field is private in RequestLogImpl, so we provide our own version of it, and recreate
@@ -22,7 +22,7 @@ public class ModifiedRequestLogImpl extends RequestLogImpl {
 
     /**
      * log - override the log funciton in RequestLogImpl for the sole purpose of changing the type of the `makeJettyServerAdapter`
-     *       to make it compatible with jetty10.
+     *       to make it compatible with jetty12.
      * @param jettyRequest
      * @param jettyResponse
      */
@@ -36,7 +36,7 @@ public class ModifiedRequestLogImpl extends RequestLogImpl {
     }
 
     /**
-     * Provide a new JettyServerAdapter that is compatible with Jetty 10.
+     * Provide a new JettyServerAdapter that is compatible with Jetty 12.
      * @param jettyRequest
      * @param jettyResponse
      * @return

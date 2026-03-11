@@ -1,4 +1,4 @@
-(ns puppetlabs.trapperkeeper.services.webserver.jetty10-websockets
+(ns puppetlabs.trapperkeeper.services.webserver.jetty12-websockets
   (:import (clojure.lang IFn)
            (org.eclipse.jetty.websocket.api WebSocketAdapter Session)
            (org.eclipse.jetty.websocket.server JettyWebSocketServlet JettyWebSocketServletFactory JettyWebSocketCreator JettyServerUpgradeRequest JettyServerUpgradeResponse)

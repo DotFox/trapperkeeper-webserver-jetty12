@@ -1,4 +1,4 @@
-(ns puppetlabs.trapperkeeper.services.webserver.jetty10-config
+(ns puppetlabs.trapperkeeper.services.webserver.jetty12-config
   (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
             [me.raynes.fs :as fs]
@@ -10,7 +10,7 @@
   (:import (ch.qos.logback.access.jetty RequestLogImpl)
            (ch.qos.logback.core CoreConstants)
            (com.puppetlabs.ssl_utils SSLUtils)
-           (com.puppetlabs.trapperkeeper.services.webserver.jetty10.utils MDCAccessLogConverter ModifiedRequestLogImpl)
+           (com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils MDCAccessLogConverter ModifiedRequestLogImpl)
            (java.io File FileInputStream)
            (java.lang.reflect InvocationTargetException)
            (java.nio.file Files)
@@ -27,7 +27,7 @@
 ;;; NOTE: We are making a decisive move away from overriding Jetty's
 ;;; implicit default values for settings when downstream TK apps do not
 ;;; explicitly provide values for them.  Please see the comments/tests in
-;;; `jetty10_default_config_test.clj` for full details.
+;;; `jetty12_default_config_test.clj` for full details.
 ;;;
 ;;; Below we are making a handful of deliberate exceptions to this rule,
 ;;; but please do not perpetuate this pattern without a compelling reason to

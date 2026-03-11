@@ -1,12 +1,12 @@
-(ns puppetlabs.trapperkeeper.services.webserver.jetty10-core
+(ns puppetlabs.trapperkeeper.services.webserver.jetty12-core
   (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
             [me.raynes.fs :as fs]
             [puppetlabs.i18n.core :as i18n]
             [puppetlabs.trapperkeeper.services.protocols.filesystem-watch-service
              :as watch-protocol]
-            [puppetlabs.trapperkeeper.services.webserver.jetty10-config :as config]
-            [puppetlabs.trapperkeeper.services.webserver.jetty10-websockets :as websockets]
+            [puppetlabs.trapperkeeper.services.webserver.jetty12-config :as config]
+            [puppetlabs.trapperkeeper.services.webserver.jetty12-websockets :as websockets]
             [puppetlabs.trapperkeeper.services.webserver.normalized-uri-helpers
              :as normalized-uri-helpers]
             [ring.util.codec :as codec]
@@ -15,7 +15,7 @@
 
   (:import (clojure.lang Atom)
            (com.puppetlabs.ssl_utils SSLUtils)
-           (com.puppetlabs.trapperkeeper.services.webserver.jetty10.utils InternalSslContextFactory MDCRequestLogHandler)
+           (com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils InternalSslContextFactory MDCRequestLogHandler)
            (java.lang.management ManagementFactory)
            (java.net URI)
            (java.security Security)
@@ -688,7 +688,7 @@
         (log/error e (i18n/trs "Web server failed to shut down gracefully in configured timeout period ({0}); cancelling remaining requests."
                                (.getStopTimeout server))))
       ;; This exception handling was added since we currently manually stop handlers within pcp-broker
-      ;; for debugging purposes there - on shutdown if Jetty 10 sees a STOPPED handler it throws an
+      ;; for debugging purposes there - on shutdown if Jetty 12 sees a STOPPED handler it throws an
       ;; ExecutionException with a IllegalStateException as it's cause and if unhandled shutdown
       ;; stops and the server goes into a FAILED state
       (catch ExecutionException e
@@ -1035,16 +1035,16 @@
 
 (defn start-server-single-default
   [context config]
-  (let [default-context     (:default (:jetty10-servers context))
+  (let [default-context     (:default (:jetty12-servers context))
         webserver           (start-webserver! default-context config)
-        server-context-list (assoc (:jetty10-servers context) :default webserver)]
-    (assoc context :jetty10-servers server-context-list)))
+        server-context-list (assoc (:jetty12-servers context) :default webserver)]
+    (assoc context :jetty12-servers server-context-list)))
 
 (defn start-server-multiple
   [context config]
-  (let [context-seq (for [[server-id server-context] (:jetty10-servers context)]
+  (let [context-seq (for [[server-id server-context] (:jetty12-servers context)]
                       [server-id (start-webserver! server-context (server-id config))])]
-    (assoc context :jetty10-servers (into {} context-seq))))
+    (assoc context :jetty12-servers (into {} context-seq))))
 
 (defn get-server-context
   [service-context server-id]
@@ -1054,7 +1054,7 @@
     (when-not server-id
       (throw (IllegalArgumentException.
                ^String (i18n/trs "no server-id was specified for this operation and no default server was specified in the configuration"))))
-    (server-id (:jetty10-servers service-context))))
+    (server-id (:jetty12-servers service-context))))
 
 (defn get-default-server-from-config
   [config]
@@ -1062,7 +1062,7 @@
 
 (defn build-server-contexts
   [context config]
-  (assoc context :jetty10-servers (into {} (for [[server-id] config]
+  (assoc context :jetty12-servers (into {} (for [[server-id] config]
                                             [server-id (initialize-context)]))
                  :default-server (get-default-server-from-config config)))
 
@@ -1116,7 +1116,7 @@
         new-config (schema/check config/MultiWebserverRawConfig config)]
     (cond
       (nil? old-config)
-      (let [context (assoc context :jetty10-servers {:default (initialize-context)}
+      (let [context (assoc context :jetty12-servers {:default (initialize-context)}
                                      :default-server :default)]
           (doseq [content (:static-content config)]
             (add-context-handler! context (:resource content)
