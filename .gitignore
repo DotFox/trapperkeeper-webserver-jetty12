@@ -12,3 +12,5 @@ resources/locales.clj
 *.iml
 .nrepl-port
 .cpcache/
+.clj-kondo/.cache/
+.lsp/.cache/
