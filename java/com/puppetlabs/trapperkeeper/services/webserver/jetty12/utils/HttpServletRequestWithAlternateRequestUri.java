@@ -1,7 +1,7 @@
 package com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletRequestWrapper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
 
 /**
  * This class provides a wrapper for an existing HttpServletRequest object

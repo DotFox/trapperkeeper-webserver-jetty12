@@ -1,65 +1,30 @@
 package com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils;
 
-import java.io.IOException;
-import java.util.Map;
-
-import javax.servlet.DispatcherType;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
+import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
-import org.eclipse.jetty.server.handler.RequestLogHandler;
-
+import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.util.Callback;
 import org.slf4j.MDC;
 
-/**
- * An implementation of the Jetty RequestLogHandler that imbues Request objects
- * with a copy of the SLF4J Mapped Diagnostic Context (MDC) and handles clearing
- * the MDC after each request.
- *
- * Patterned after:
- *
- *   https://github.com/jetty-project/jetty-and-logback-example/blob/master/jetty-slf4j-mdc-handler/src/main/java/org/eclipse/jetty/examples/logging/MDCHandler.java
- */
-public class MDCRequestLogHandler extends RequestLogHandler {
-  public static final String MDC_ATTR = "com.puppetlabs.trapperkeeper.services.webserver.jetty12.MDC";
+import java.util.Map;
 
-  @Override
-  public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
-          throws IOException, ServletException
-  {
-    // NOTE: Will return null if nothing has been set in the MDC of the worker
-    //       thread currently handling this request.
-    Map<String, String> savedContext = MDC.getCopyOfContextMap();
+public class MDCRequestLogHandler extends Handler.Wrapper {
+    public static final String MDC_ATTR = "puppetlabs.mdc";
 
-    try {
-      if (baseRequest.getDispatcherType() == DispatcherType.REQUEST) {
-
-        // replace the behavior in the requestLogHandler (instead of calling super) as there may not
-        // be a requestLog set here to delegate to
-        if (this.getRequestLog() != null) {
-          baseRequest.getHttpChannel().addRequestLog(this.getRequestLog());
-        }
-      }
-
-      // this normally happens in the super call, replicated here.
-      if (this.getHandler() != null) {
-        this.getHandler().handle(target, baseRequest, request, response);
-      }
-
-      // Tag request with a copy of the MDC so that values are accessible if
-      // logging happens in a separate thread.
-      Map<String, String> mdcPropertyMap = MDC.getCopyOfContextMap();
-      baseRequest.setAttribute(MDC_ATTR, mdcPropertyMap);
-    } finally {
-      // Clears any context items created during the request so they don't
-      // contaminate other requests when a worker thread is re-used.
-      if (savedContext != null) {
-        MDC.setContextMap(savedContext);
-      } else {
-        MDC.clear();
-      }
+    public MDCRequestLogHandler() {
+        super();
     }
-  }
+
+    public MDCRequestLogHandler(Handler handler) {
+        super(handler);
+    }
+
+    @Override
+    public boolean handle(Request request, Response response, Callback callback) throws Exception {
+        Map<String, String> mdcContext = MDC.getCopyOfContextMap();
+        if (mdcContext != null) {
+            request.setAttribute(MDC_ATTR, mdcContext);
+        }
+        return super.handle(request, response, callback);
+    }
 }
