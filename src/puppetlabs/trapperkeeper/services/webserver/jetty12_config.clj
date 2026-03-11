@@ -4,21 +4,11 @@
             [me.raynes.fs :as fs]
             [puppetlabs.i18n.core :as i18n]
             [puppetlabs.kitchensink.core :refer [parse-bool uuid]]
-            [puppetlabs.kitchensink.file :refer [nofollow-links]]
             [puppetlabs.ssl-utils.core :as ssl]
             [schema.core :as schema])
-  (:import (ch.qos.logback.access.jetty RequestLogImpl)
-           (ch.qos.logback.core CoreConstants)
-           (com.puppetlabs.ssl_utils SSLUtils)
-           (com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils MDCAccessLogConverter ModifiedRequestLogImpl)
-           (java.io File FileInputStream)
-           (java.lang.reflect InvocationTargetException)
-           (java.nio.file Files)
-           (java.security KeyStore)
-           (java.util HashMap)
-           (org.codehaus.commons.compiler CompileException)
-           (org.codehaus.janino ScriptEvaluator)
-           (org.eclipse.jetty.server Server)))
+  (:import (com.puppetlabs.ssl_utils SSLUtils)
+           (java.io FileInputStream)
+           (java.security KeyStore)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Constants / Defaults
@@ -139,9 +129,7 @@
    (schema/optional-key :default-server)             schema/Bool
    (schema/optional-key :static-content)             [StaticContent]
    (schema/optional-key :gzip-enable)                schema/Bool
-   (schema/optional-key :access-log-config)          schema/Str
    (schema/optional-key :shutdown-timeout-seconds)   schema/Int
-   (schema/optional-key :post-config-script)         schema/Str
    (schema/optional-key :allow-renegotiation)        schema/Bool
    (schema/optional-key :sni-required)               schema/Bool})
 
@@ -471,45 +459,3 @@
                ^String (i18n/trs "Either host, port, ssl-host, or ssl-port must be specified on the config in order for the server to be started"))))
     result))
 
-(schema/defn ^:always-validate
-  init-log-handler :- (schema/maybe RequestLogImpl)
-  [config :- WebserverRawConfig]
-  (let [filename (:access-log-config config)
-        path (.toPath (File. ^String filename))]
-    (if (Files/isRegularFile path nofollow-links)
-      (do (log/debug (i18n/trs "Found access-log file at {0}" filename))
-        (let [pattern-rules (HashMap.)
-              logger (ModifiedRequestLogImpl.)]
-          (doseq [pattern ["X" "mdc"]]
-            (.put pattern-rules
-                  pattern
-                  (.getName MDCAccessLogConverter)))
-          (.putObject logger CoreConstants/PATTERN_RULE_REGISTRY pattern-rules)
-          (log/info (i18n/trs "Enabling access logger using file {0}" filename))
-          (.setFileName logger filename)
-          (.setQuiet logger false)
-          logger))
-      (log/info (i18n/trs "Access logging file not found at {0}" filename)))))
-
-(defn maybe-init-log-handler
-  [config]
-  (if (:access-log-config config)
-    (init-log-handler config)
-    (log/info (i18n/trs "Access log configuration not specified"))))
-
-(schema/defn ^:always-validate
-  execute-post-config-script!
-  [s :- Server
-   script :- schema/Str]
-  (log/warn (i18n/trs "The ''post-config-script'' setting is for advanced use cases only, and may be subject to minor changes when the application is upgraded."))
-  (let [script-err-msg (i18n/trs "Invalid script string in webserver ''post-config-script'' configuration")]
-    (try
-      (let [evaluator (doto (ScriptEvaluator.)
-                        (.setParameters (into-array String ["server"])
-                                        (into-array Class [Server]))
-                        (.cook script))]
-        (.evaluate evaluator (into-array Object [s])))
-      (catch CompileException ex
-        (throw (IllegalArgumentException. script-err-msg ex)))
-      (catch InvocationTargetException ex
-        (throw (IllegalArgumentException. script-err-msg ex))))))
