@@ -723,7 +723,7 @@
     (with-app-with-config
       app
       [jetty12-service]
-      {:webserver {:port 8080 :shutdown-timeout-seconds 5}}
+      {:webserver {:port 8080 :shutdown-timeout-seconds 10}}
       (let [s (tk-app/get-service app :WebserverService)
             add-ring-handler   (partial add-ring-handler s)
             in-request-handler (promise)
