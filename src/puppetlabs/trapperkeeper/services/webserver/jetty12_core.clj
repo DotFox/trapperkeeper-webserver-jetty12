@@ -21,7 +21,6 @@
            (java.security Security)
            (java.util.concurrent TimeoutException ExecutionException)
            (jakarta.servlet Servlet ServletContextListener)
-           (jakarta.servlet.http HttpServletResponse)
            (org.eclipse.jetty.client HttpClient RedirectProtocolHandler)
            (org.eclipse.jetty.client.dynamic HttpClientTransportDynamic)
            (org.eclipse.jetty.client.http HttpClientConnectionFactory)
@@ -30,15 +29,16 @@
            (org.eclipse.jetty.jmx MBeanContainer)
            (org.eclipse.jetty.ee10.proxy ProxyServlet)
            (org.eclipse.jetty.server AbstractConnectionFactory ConnectionFactory CustomRequestLog Handler Handler$Wrapper
-                                     HttpConfiguration HttpConnectionFactory Request
+                                     HttpConfiguration HttpConnectionFactory Request Response
                                      SecureRequestCustomizer Server ServerConnector Slf4jRequestLogWriter)
            (org.eclipse.jetty.server.handler ContextHandler
                                              ContextHandlerCollection
                                              StatisticsHandler)
+           (org.eclipse.jetty.websocket.server ServerWebSocketContainer)
            (org.eclipse.jetty.server.handler.gzip GzipHandler)
-           (org.eclipse.jetty.ee10.servlet DefaultServlet FilterHolder ServletContextHandler ServletHolder)
+           (org.eclipse.jetty.ee10.servlet DefaultServlet ServletContextHandler ServletHolder)
            (org.eclipse.jetty.util BlockingArrayQueue URIUtil)
-           (org.eclipse.jetty.util.resource Resource ResourceFactory)
+           (org.eclipse.jetty.util.resource ResourceFactory)
            (org.eclipse.jetty.util.ssl SslContextFactory$Client SslContextFactory$Server)
            (org.eclipse.jetty.util.thread QueuedThreadPool)
            (org.eclipse.jetty.ee10.webapp WebAppContext)))
@@ -187,20 +187,6 @@
   Server object."
   [webserver-context :- ServerContext]
   (instance? Server (:server webserver-context)))
-
-(schema/defn ^:always-validate
-  merge-webserver-overrides-with-options :- config/WebserverRawConfig
-  "Merge any overrides made to the webserver config settings with the supplied
-   options."
-  [webserver-context :- ServerContext
-   options :- config/WebserverRawConfig]
-  (let [overrides (:overrides (swap! (:state webserver-context)
-                                     assoc
-                                     :overrides-read-by-webserver
-                                     true))]
-    (doseq [key (keys overrides)]
-      (log/info (i18n/trs "webserver config overridden for key ''{0}''" (name key))))
-    (merge options overrides)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; SSL Context Functions
@@ -480,17 +466,12 @@
   "Build up a list of mime types that should not be candidates for
   gzip compression in responses."
   []
-  (->
-    ;; This code is ported from Jetty 9.0.5's GzipFilter class.  In
-    ;; Jetty 7, this behavior was the default for GzipHandler as well
-    ;; as GzipFilter, but in Jetty 9.0.5 the GzipHandler no longer
-    ;; includes this, so we need to do it by hand.
-    (filter #(or (.startsWith % "image/")
-                 (.startsWith % "audio/")
-                 (.startsWith % "video/"))
-            (MimeTypes/getKnownMimeTypes))
-    (conj "application/compress" "application/zip" "application/gzip" "text/event-stream")
-    (into-array)))
+  (-> (filter #(or (.startsWith ^String % "image/")
+                   (.startsWith ^String % "audio/")
+                   (.startsWith ^String % "video/"))
+              (.getMimeTypes (MimeTypes/getDefaults)))
+      (concat ["application/compress" "application/zip" "application/gzip" "text/event-stream"])
+      (into-array)))
 
 (defn- gzip-handler
   "Given a handler, wrap it with a GzipHandler that will compress the response
@@ -509,30 +490,21 @@
   [webserver-context :- ServerContext
    ^ContextHandler handler :- ContextHandler
    enable-trailing-slash-redirect? :- schema/Bool]
-  (.setAllowNullPathInfo handler (not enable-trailing-slash-redirect?))
+  (when (instance? ServletContextHandler handler)
+    (.setAllowNullPathInContext ^ServletContextHandler handler (not enable-trailing-slash-redirect?)))
   (.addHandler (:handlers webserver-context) handler)
   ;; If this handler is being added after the server has been started, we
-  ;; need to mark the handler as "managed" so that the server will stop the
-  ;; handler when the server is stopped.  We also need to manually start the
-  ;; handler.  The server takes care of marking handlers as managed and starting
-  ;; them if the handlers are already registered when the server is started.
+  ;; need to manually start the handler.  In Jetty 12, handlers added via
+  ;; addHandler are auto-managed by the ContextHandlerCollection.
   (if-let [server (.getServer handler)]
     (when (and (.isRunning server) (not (.isRunning handler)))
-              (.manage (:handlers webserver-context) handler)
-              (.start handler)))
+      (.start handler)))
   handler)
 
 (defn- ring-handler
-  "Returns an Jetty Handler implementation for the given Ring handler."
+  "Returns a jakarta Servlet for the given Ring handler."
   [handler]
-  (proxy [HandlerWrapper] []
-    (handle [_ ^Request base-request request response]
-      (let [request-map  (assoc (servlet/build-request-map request)
-                           :response response)
-            response-map (handler request-map)]
-        (when response-map
-          (servlet/update-servlet-response response response-map)
-          (.setHandled base-request true))))))
+  (servlet/servlet handler))
 
 (schema/defn ^:always-validate
   proxy-servlet :- ProxyServlet
@@ -616,18 +588,6 @@
                                                    [endpoint-map]
                                                    (conj % endpoint-map))))
 
-(schema/defn ^:always-validate max-request-body-size-handler*
-  [handler :- Handler
-   max-size :- schema/Int]
-  (proxy [HandlerWrapper] []
-    (handle [target ^Request base-request request response]
-      (let [request-size (.getContentLength base-request)]
-        (if (> request-size max-size)
-          (do
-            (.setStatus response HttpServletResponse/SC_REQUEST_ENTITY_TOO_LARGE)
-            (.setHandled base-request true))
-          (.handle handler target base-request request response))))))
-
 (schema/defn ^:always-validate max-request-body-size-handler
   "Wrap a max-request-body-size handler around the supplied handler.  The
   handler returns a 413 (request entity too large) error if the Content-Length
@@ -635,17 +595,23 @@
   max-size parameter."
   [handler :- Handler
    max-size :- schema/Int]
-  (doto (max-request-body-size-handler* handler max-size)
-    (.setHandler handler)))
+  (proxy [Handler$Wrapper] [handler]
+    (handle [request response callback]
+      (let [request-size (Request/getLength request)]
+        (if (> request-size max-size)
+          (do
+            (Response/writeError request response callback 413)
+            true)
+          (let [^Handler next-handler (.getHandler ^Handler$Wrapper this)]
+            (.handle next-handler request response callback)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
 
 (schema/defn ^:always-validate
   initialize-context :- ServerContext
-  "Create a webserver-context which contains a HandlerCollection and a
-  ContextHandlerCollection which can accept the addition of new handlers
-  before the webserver is started."
+  "Create a webserver-context which contains a ContextHandlerCollection
+  which can accept the addition of new handlers before the webserver is started."
   []
   (let [^ContextHandlerCollection chc (ContextHandlerCollection.)]
     {:handlers chc
@@ -742,41 +708,28 @@
                                   webserver-context
                                   options))
         ^Server s             (create-server webserver-context config)
-        ^HandlerCollection hc (HandlerCollection.)
-        logger (config/maybe-init-log-handler options)]
-    (.setHandlers hc (into-array Handler [(:handlers webserver-context)]))
-    (let [shutdown-timeout (* 1000 (:shutdown-timeout-seconds options config/default-shutdown-timeout-seconds))
-          maybe-zipped (if (:gzip-enable options true)
-                         (gzip-handler hc)
-                         hc)
-          maybe-size-restricted (if-let [max-size (:request-body-max-size
-                                                   options)]
-                                  (max-request-body-size-handler
-                                   maybe-zipped
-                                   max-size)
-                                  maybe-zipped)
-          maybe-logged (if logger
-                         (doto (MDCRequestLogHandler.)
-                           (.setHandler maybe-size-restricted))
-                         maybe-size-restricted)
-          statistics-handler (if (or (nil? shutdown-timeout) (pos? shutdown-timeout))
-                               (doto (StatisticsHandler.)
-                                 (.setHandler maybe-logged))
-                               maybe-logged)]
-      (.setHandler s statistics-handler)
-      (if logger
-        (do
-          (log/info (i18n/trs "Using specified access logging"))
-          (.setRequestLog s logger))
-        (do
-          (log/info (i18n/trs "Using CustomRequestLog using extended NCSA format"))
-          (.setRequestLog s (CustomRequestLog. (Slf4jRequestLogWriter.) CustomRequestLog/EXTENDED_NCSA_FORMAT))))
-      (when shutdown-timeout
-        (log/info (i18n/trs "Server shutdown timeout set to {0} milliseconds" shutdown-timeout))
-        (.setStopTimeout s shutdown-timeout))
-      (when-let [script (:post-config-script options)]
-        (config/execute-post-config-script! s script))
-      (assoc webserver-context :server s))))
+        ;; Build handler chain from inside out:
+        ;; ContextHandlerCollection -> maybe-gzip -> maybe-size-restricted -> MDC -> maybe-statistics
+        inner-handler         (:handlers webserver-context)
+        shutdown-timeout      (* 1000 (:shutdown-timeout-seconds options config/default-shutdown-timeout-seconds))
+        maybe-zipped          (if (:gzip-enable options true)
+                                (gzip-handler inner-handler)
+                                inner-handler)
+        maybe-size-restricted (if-let [max-size (:request-body-max-size options)]
+                                (max-request-body-size-handler maybe-zipped max-size)
+                                maybe-zipped)
+        maybe-with-mdc        (doto (MDCRequestLogHandler.)
+                                (.setHandler maybe-size-restricted))
+        statistics-handler    (if (or (nil? shutdown-timeout) (pos? shutdown-timeout))
+                                (StatisticsHandler. maybe-with-mdc)
+                                maybe-with-mdc)]
+    (.setHandler s statistics-handler)
+    (log/info (i18n/trs "Using CustomRequestLog using extended NCSA format"))
+    (.setRequestLog s (CustomRequestLog. (Slf4jRequestLogWriter.) CustomRequestLog/EXTENDED_NCSA_FORMAT))
+    (when shutdown-timeout
+      (log/info (i18n/trs "Server shutdown timeout set to {0} milliseconds" shutdown-timeout))
+      (.setStopTimeout s shutdown-timeout))
+    (assoc webserver-context :server s)))
 
 (schema/defn ^:always-validate start-webserver! :- ServerContext
   "Creates and starts a webserver.  Returns an updated context map containing
@@ -795,7 +748,7 @@
 
 (schema/defn ^:always-validate
   add-context-handler :- ContextHandler
-  "Add a static content context handler (allow for customization of the context handler through javax.servlet.ServletContextListener implementations)"
+  "Add a static content context handler (allow for customization of the context handler through jakarta.servlet.ServletContextListener implementations)"
   ([webserver-context base-path context-path]
    (add-context-handler webserver-context base-path context-path nil {:follow-links? false
                                                                       :enable-trailing-slash-redirect? false}))
@@ -807,10 +760,11 @@
    (let [handler (ServletContextHandler. nil context-path ServletContextHandler/NO_SESSIONS)
          follow-links? (:follow-links? options)
          enable-trailing-slash-redirect? (:enable-trailing-slash-redirect? options)
-         normalize-request-uri? (:normalize-request-uri? options)]
-     (.setBaseResource handler (Resource/newResource ^String base-path))
-     (if follow-links?
-       (.setAliasChecks handler (list (SymlinkAllowedResourceAliasChecker. handler)))
+         normalize-request-uri? (:normalize-request-uri? options)
+         resource (.newResource (ResourceFactory/root)
+                                (java.nio.file.Path/of base-path (into-array String [])))]
+     (.setBaseResource handler resource)
+     (when-not follow-links?
        (.clearAliasChecks handler))
      ;; register servlet context listeners (if any)
      (when-not (nil? context-listeners)
@@ -828,13 +782,13 @@
    path :- schema/Str
    enable-trailing-slash-redirect? :- schema/Bool
    normalize-request-uri? :- schema/Bool]
-  (let [handler (normalized-uri-helpers/handler-maybe-wrapped-with-normalized-uri
-                 (ring-handler handler)
-                 normalize-request-uri?)
+  (let [servlet (ring-handler handler)
         path (if (= "" path) "/" path)
-        ctxt-handler (doto (ServletContextHandler. ServletContextHandler/NO_SESSIONS)
+        ctxt-handler (doto (ServletContextHandler.)
                        (.setContextPath path)
-                       (.insertHandler handler))]
+                       (.addServlet (ServletHolder. ^jakarta.servlet.Servlet servlet) "/*"))]
+    (when normalize-request-uri?
+      (normalized-uri-helpers/add-normalized-uri-filter-to-servlet-handler! ctxt-handler))
     (add-handler webserver-context ctxt-handler enable-trailing-slash-redirect?)))
 
 (schema/defn ^:always-validate
@@ -844,16 +798,11 @@
    path :- schema/Str
    enable-trailing-slash-redirect? :- schema/Bool
    normalize-request-uri? :- schema/Bool]
-  (let [servlet (websockets/JettyWebSocketServletInstance handlers)
-        ctxt-handler (doto (ServletContextHandler. ServletContextHandler/SESSIONS)
-                       (.setContextPath path)
-                       (.setServer (:server webserver-context)))
-        holder (ServletHolder. servlet)]
-    (JettyWebSocketServletContainerInitializer/configure ctxt-handler nil)
-    (.addServlet ctxt-handler holder "/*")
-    (when normalize-request-uri?
-      (normalized-uri-helpers/add-normalized-uri-filter-to-servlet-handler!
-       ctxt-handler))
+  (let [ctxt-handler (doto (ContextHandler.)
+                       (.setContextPath path))
+        server (:server webserver-context)
+        container (ServerWebSocketContainer/ensure server ctxt-handler)]
+    (.addMapping container "/*" (websockets/proxy-ws-creator handlers))
     (add-handler webserver-context ctxt-handler enable-trailing-slash-redirect?)))
 
 (schema/defn ^:always-validate
