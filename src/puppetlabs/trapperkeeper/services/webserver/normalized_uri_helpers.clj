@@ -1,15 +1,13 @@
 (ns puppetlabs.trapperkeeper.services.webserver.normalized-uri-helpers
   (:require [puppetlabs.i18n.core :as i18n]
-            [ring.util.servlet :as servlet]
+            [ring.util.jakarta.servlet :as servlet]
             [schema.core :as schema])
   (:import (com.puppetlabs.trapperkeeper.services.webserver.jetty12.utils
              HttpServletRequestWithAlternateRequestUri)
            (java.util EnumSet)
-           (javax.servlet DispatcherType Filter)
-           (javax.servlet.http HttpServletRequest HttpServletResponse)
-           (org.eclipse.jetty.server Request)
-           (org.eclipse.jetty.server.handler AbstractHandler HandlerWrapper)
-           (org.eclipse.jetty.servlet FilterHolder ServletContextHandler)
+           (jakarta.servlet DispatcherType Filter)
+           (jakarta.servlet.http HttpServletRequest HttpServletResponse)
+           (org.eclipse.jetty.ee10.servlet FilterHolder ServletContextHandler)
            (org.eclipse.jetty.util URIUtil)))
 
 (schema/defn ^:always-validate normalize-uri-path :- schema/Str
@@ -43,41 +41,6 @@
                ^String (i18n/trs "Invalid relative path (.. or .) in: {0}"
                                  percent-decoded-uri-path)))
       (URIUtil/compactPath canonicalized-uri-path))))
-
-(schema/defn ^:always-validate
-  normalize-uri-handler :- HandlerWrapper
-  "Create a `HandlerWrapper` which provides a normalized request URI on to
-  its downstream handler for an incoming request.  The normalized URI would
-  be returned for a 'getRequestURI' call made by the downstream handler on
-  its incoming HttpServletRequest request parameter.  Normalization is done
-  per the rules described in the `normalize-uri-path` function.  If an error
-  is encountered during request URI normalization, an HTTP 400 (Bad Request)
-  response is returned rather than the request being passed on its downstream
-  handler."
-  []
-  (proxy [HandlerWrapper] []
-    (handle [^String target ^Request base-request
-             ^HttpServletRequest request ^HttpServletResponse response]
-      (when-let [handler (proxy-super getHandler)]
-        (if-let [normalized-uri
-                 (try
-                   (normalize-uri-path request)
-                   (catch IllegalArgumentException ex
-                     (do
-                       (servlet/update-servlet-response
-                        response
-                        {:status 400
-                         :body (.getMessage ex)})
-                       (.setHandled base-request true))
-                     nil))]
-          (.handle
-           handler
-           target
-           base-request
-           (HttpServletRequestWithAlternateRequestUri.
-            request
-            normalized-uri)
-           response))))))
 
 (schema/defn ^:always-validate normalized-uri-filter :- Filter
   "Create a servlet filter which provides a normalized request URI on to its
@@ -128,14 +91,10 @@
                 (EnumSet/of DispatcherType/REQUEST))))
 
 (schema/defn ^:always-validate
-  handler-maybe-wrapped-with-normalized-uri :- AbstractHandler
-  "If the supplied `normalize-request-uri?` parameter is 'true', return a
-  handler that normalizes a request uri before passing it on downstream to
-  the supplied handler for an incoming request.  If the supplied
-  `normalize-request-uri?` is 'false', return the supplied handler."
-  [handler :- AbstractHandler
+  maybe-add-normalized-uri-filter!
+  "If normalize-request-uri? is true, adds a URI normalization filter to
+  the given ServletContextHandler."
+  [handler :- ServletContextHandler
    normalize-request-uri? :- schema/Bool]
-  (if normalize-request-uri?
-    (doto (normalize-uri-handler)
-      (.setHandler handler))
-    handler))
+  (when normalize-request-uri?
+    (add-normalized-uri-filter-to-servlet-handler! handler)))
