@@ -127,15 +127,22 @@
           (is (= (:status response) 200))
           (is (= (:body response) "Hello World!")))
         (let [message   (promise)
-              websocket @(ws-client/websocket "ws://localhost:8080/baz"
-                                           {:on-message (fn [ws msg last?]
-                                                          (deliver message msg))
-                                            :http-client (http/build-http-client
-                                                          ;; Disabling SSL just because of encountering problems
-                                                          ;; with the JDK 11 HttpClient hato wraps and our current
-                                                          ;; java/bouncycastle security rules
-                                                          {:ssl-context {:insecure? true}})})]
-          (is (= (str @message) "heyo"))
+              websocket (deref (ws-client/websocket "ws://localhost:8080/baz"
+                                                    {:on-message (fn [ws msg last?]
+                                                                   (deliver message msg))
+                                                     :http-client (http/build-http-client
+                                                                   ;; Disabling SSL just because of encountering problems
+                                                                   ;; with the JDK 11 HttpClient hato wraps and our current
+                                                                   ;; java/bouncycastle security rules
+                                                                   {:ssl-context {:insecure? true}})})
+                               5000
+                               ::timeout)]
+          (is (not= ::timeout websocket)
+              "Timed out waiting for websocket connection to be established")
+          (let [message (deref message 5000 ::timeout)]
+            (is (not= ::timeout message)
+                "Timed out waiting for websocket message")
+            (is (= (str message) "heyo")))
           (ws-client/close! websocket))))
 
     (testing "Error occurs when specifying service that does not exist in config file"

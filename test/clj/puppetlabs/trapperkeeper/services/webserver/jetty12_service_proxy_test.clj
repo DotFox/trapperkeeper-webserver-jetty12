@@ -693,7 +693,7 @@
                       :path "/hello"}
        :ring-handler proxy-ring-handler}
       (let [response (http-get "http://localhost:10000/hello-proxy/world")]
-        (is (= (:status response) 500))
+        (is (= (:status response) 502))
         (is (= (re-find #"port out of range:123456789" (:body response)))))))
 
   (testing "setting an idle timeout fails properly"

@@ -16,14 +16,14 @@
 
                  [jakarta.servlet/jakarta.servlet-api "6.0.0"]
                  ;; Jetty Webserver
-                 [org.eclipse.jetty/jetty-server "12.0.16"]
-                 [org.eclipse.jetty.ee10/jetty-ee10-servlet "12.0.16"]
-                 [org.eclipse.jetty.ee10/jetty-ee10-webapp "12.0.16"]
-                 [org.eclipse.jetty.ee10/jetty-ee10-proxy "12.0.16"]
-                 [org.eclipse.jetty/jetty-jmx "12.0.16"]
-                 [org.eclipse.jetty.websocket/jetty-websocket-jetty-server "12.0.16"]
-                 [org.eclipse.jetty.websocket/jetty-websocket-jetty-client "12.0.16"]
-                 [org.eclipse.jetty.websocket/jetty-websocket-jetty-api "12.0.16"]
+                 [org.eclipse.jetty/jetty-server "12.1.7"]
+                 [org.eclipse.jetty.ee10/jetty-ee10-servlet "12.1.7"]
+                 [org.eclipse.jetty.ee10/jetty-ee10-webapp "12.1.7"]
+                 [org.eclipse.jetty.ee10/jetty-ee10-proxy "12.1.7"]
+                 [org.eclipse.jetty/jetty-jmx "12.1.7"]
+                 [org.eclipse.jetty.websocket/jetty-websocket-jetty-server "12.1.7"]
+                 [org.eclipse.jetty.websocket/jetty-websocket-jetty-client "12.1.7"]
+                 [org.eclipse.jetty.websocket/jetty-websocket-jetty-api "12.1.7"]
 
                  [prismatic/schema "1.1.12"]
                  [org.ring-clojure/ring-jakarta-servlet "1.12.2"]

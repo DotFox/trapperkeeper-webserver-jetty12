@@ -21,6 +21,14 @@
   schema-test/validate-schemas
   testutils/assert-clean-shutdown)
 
+(defn await-result
+  [result timeout-ms description]
+  (let [timeout-value ::timeout
+        value (deref result timeout-ms timeout-value)]
+    (is (not= timeout-value value)
+        (str "Timed out waiting for " description))
+    value))
+
 (deftest static-content-test
   (with-test-logging
     (testing "static content context"
@@ -241,35 +249,38 @@
                                                     (reset! closed-request-path (ws-session/request-path ws))
                                                     (deliver closed true))}]
           (add-websocket-handler handlers path)
-          (let [socket @(ws-client/websocket (str "ws://localhost:8080" path "/foo")
-                                             {:on-message (fn [ws msg last?]
-                                                            ;; I don't know what it is but this homegrown instance? test
-                                                            ;; works, but (instance? java.nio.HeapCharBuffer msg) seemingly
-                                                            ;; crashes this function without exception
-                                                            (if (= (str (type msg)) "class java.nio.HeapCharBuffer")
-                                                              (swap! client-messages conj (str msg))
-                                                              ;; One would think there would be a java class function for this,
-                                                              ;; but I didn't see anything obvious, there is no backing array to call
-                                                              ;; https://resources.mpi-inf.mpg.de/d5/teaching/ss05/is05/javadoc/java/nio/CharBuffer.html#array()
-                                                              (let [char-buffer-array (loop [i 0
-                                                                                             array []]
-                                                                                        (if (= i 5)
-                                                                                          array
-                                                                                          (recur (+ i 1) (conj array (.get msg i)))))]
-                                                                (swap! client-binary-messages conj char-buffer-array)
-                                                                (deliver binary-client-message true))))
-                                              :http-client (http/build-http-client
-                                                            {:ssl-context {:insecure? true}})})]
+          (let [socket (await-result
+                         (ws-client/websocket (str "ws://localhost:8080" path "/foo")
+                                              {:on-message (fn [ws msg last?]
+                                                             ;; I don't know what it is but this homegrown instance? test
+                                                             ;; works, but (instance? java.nio.HeapCharBuffer msg) seemingly
+                                                             ;; crashes this function without exception
+                                                             (if (= (str (type msg)) "class java.nio.HeapCharBuffer")
+                                                               (swap! client-messages conj (str msg))
+                                                               ;; One would think there would be a java class function for this,
+                                                               ;; but I didn't see anything obvious, there is no backing array to call
+                                                               ;; https://resources.mpi-inf.mpg.de/d5/teaching/ss05/is05/javadoc/java/nio/CharBuffer.html#array()
+                                                               (let [char-buffer-array (loop [i 0
+                                                                                              array []]
+                                                                                         (if (= i 5)
+                                                                                           array
+                                                                                           (recur (+ i 1) (conj array (.get msg i)))))]
+                                                                 (swap! client-binary-messages conj char-buffer-array)
+                                                                 (deliver binary-client-message true))))
+                                               :http-client (http/build-http-client
+                                                             {:ssl-context {:insecure? true}})})
+                         5000
+                         "websocket connection to be established")]
             (ws-client/send! socket "Hello websocket handler")
             (ws-client/send! socket "You look dandy")
             (ws-client/send! socket (byte-array [2 1 2 3 3]))
-            (deref binary-client-message)
+            (await-result binary-client-message 5000 "binary websocket message")
             (is (= @connected 1))
             (is (= @client-request-path "/foo"))
             (is (re-matches #"/127\.0\.0\.1:\d+" @client-remote-addr))
             (is (= @client-is-ssl false))
             (ws-client/close! socket)
-            (deref closed)
+            (await-result closed 5000 "websocket close event")
             (is (= @closed-request-path "/foo"))
             (is (= @connected 0))
             (is (= @server-binary-messages [[2 1 2 3 3]]))
@@ -289,14 +300,19 @@
               add-websocket-handler (partial add-websocket-handler s)
               path                  "/test"
               closed                 (promise)
-              handlers               {:on-connect (fn [ws] (ws-session/close! ws))}]
+              handlers               {:on-connect (fn [ws]
+                                                    (future
+                                                      (ws-session/close! ws)))}]
           (add-websocket-handler handlers path)
-          (let [_socket @(ws-client/websocket (str "ws://localhost:8080" path)
-                                              {:on-close (fn [ws code _reason] (deliver closed code))
-                                               :http-client (http/build-http-client
-                                                             {:ssl-context {:insecure? true}})})]
+          (let [_socket (await-result
+                          (ws-client/websocket (str "ws://localhost:8080" path)
+                                               {:on-close (fn [ws code _reason] (deliver closed code))
+                                                :http-client (http/build-http-client
+                                                              {:ssl-context {:insecure? true}})})
+                          5000
+                          "websocket connection to be established")]
             ;; 1000 is for normal closure https://tools.ietf.org/html/rfc6455#section-7.4.1
-            (is (= 1000 @closed))))))
+            (is (= 1000 (await-result closed 5000 "websocket close without reason")))))))
 
     (testing "can close with reason"
       (with-app-with-config app
@@ -306,13 +322,18 @@
               add-websocket-handler (partial add-websocket-handler s)
               path                  "/test"
               closed                 (promise)
-              handlers               {:on-connect (fn [ws] (ws-session/close! ws 4000 "Bye"))}]
+              handlers               {:on-connect (fn [ws]
+                                                    (future
+                                                      (ws-session/close! ws 4000 "Bye")))}]
           (add-websocket-handler handlers path)
-          (let [_socket @(ws-client/websocket (str "ws://localhost:8080" path)
-                                              {:on-close (fn [ws code reason] (deliver closed [code reason]))
-                                               :http-client (http/build-http-client
-                                                             {:ssl-context {:insecure? true}})})]
-            (is (= [4000 "Bye"] @closed))))))))
+          (let [_socket (await-result
+                          (ws-client/websocket (str "ws://localhost:8080" path)
+                                               {:on-close (fn [ws code reason] (deliver closed [code reason]))
+                                                :http-client (http/build-http-client
+                                                              {:ssl-context {:insecure? true}})})
+                          5000
+                          "websocket connection to be established")]
+            (is (= [4000 "Bye"] (await-result closed 5000 "websocket close with reason")))))))))
 
 (deftest war-test
   (with-test-logging
