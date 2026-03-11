@@ -10,7 +10,7 @@
             [puppetlabs.trapperkeeper.services.webserver.normalized-uri-helpers
              :as normalized-uri-helpers]
             [ring.util.codec :as codec]
-            [ring.util.servlet :as servlet]
+            [ring.util.jakarta.servlet :as servlet]
             [schema.core :as schema])
 
   (:import (clojure.lang Atom)
@@ -20,29 +20,28 @@
            (java.net URI)
            (java.security Security)
            (java.util.concurrent TimeoutException ExecutionException)
-           (javax.servlet Servlet ServletContextListener)
-           (javax.servlet.http HttpServletResponse)
+           (jakarta.servlet Servlet ServletContextListener)
+           (jakarta.servlet.http HttpServletResponse)
            (org.eclipse.jetty.client HttpClient RedirectProtocolHandler)
            (org.eclipse.jetty.client.dynamic HttpClientTransportDynamic)
            (org.eclipse.jetty.client.http HttpClientConnectionFactory)
            (org.eclipse.jetty.http HttpMethod MimeTypes UriCompliance)
            (org.eclipse.jetty.io ClientConnectionFactory$Info ClientConnector)
            (org.eclipse.jetty.jmx MBeanContainer)
-           (org.eclipse.jetty.proxy ProxyServlet)
-           (org.eclipse.jetty.server AbstractConnectionFactory ConnectionFactory CustomRequestLog Handler HttpConfiguration
-                                     HttpConnectionFactory Request
-                                     SecureRequestCustomizer Server ServerConnector Slf4jRequestLogWriter SymlinkAllowedResourceAliasChecker)
+           (org.eclipse.jetty.ee10.proxy ProxyServlet)
+           (org.eclipse.jetty.server AbstractConnectionFactory ConnectionFactory CustomRequestLog Handler Handler$Wrapper
+                                     HttpConfiguration HttpConnectionFactory Request
+                                     SecureRequestCustomizer Server ServerConnector Slf4jRequestLogWriter)
            (org.eclipse.jetty.server.handler ContextHandler
-                                             ContextHandlerCollection HandlerCollection
-                                             HandlerWrapper StatisticsHandler)
+                                             ContextHandlerCollection
+                                             StatisticsHandler)
            (org.eclipse.jetty.server.handler.gzip GzipHandler)
-           (org.eclipse.jetty.servlet DefaultServlet ServletContextHandler ServletHolder)
+           (org.eclipse.jetty.ee10.servlet DefaultServlet FilterHolder ServletContextHandler ServletHolder)
            (org.eclipse.jetty.util BlockingArrayQueue URIUtil)
-           (org.eclipse.jetty.util.resource Resource)
+           (org.eclipse.jetty.util.resource Resource ResourceFactory)
            (org.eclipse.jetty.util.ssl SslContextFactory$Client SslContextFactory$Server)
            (org.eclipse.jetty.util.thread QueuedThreadPool)
-           (org.eclipse.jetty.webapp WebAppContext)
-           (org.eclipse.jetty.websocket.server.config JettyWebSocketServletContainerInitializer)))
+           (org.eclipse.jetty.ee10.webapp WebAppContext)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; JDK SecurityProvider Hack
