@@ -1,7 +1,7 @@
 (ns puppetlabs.trapperkeeper.services.webserver.jetty12-websockets
   (:import (clojure.lang IFn)
-           (org.eclipse.jetty.websocket.api WebSocketAdapter Session)
-           (org.eclipse.jetty.websocket.server JettyWebSocketServlet JettyWebSocketServletFactory JettyWebSocketCreator JettyServerUpgradeRequest JettyServerUpgradeResponse)
+           (org.eclipse.jetty.websocket.api Session Session$Listener$AutoDemanding Callback)
+           (org.eclipse.jetty.websocket.server ServerUpgradeRequest ServerUpgradeResponse ServerWebSocketContainer WebSocketCreator)
            (java.security.cert X509Certificate)
            (java.time Duration)
            (java.util.concurrent CountDownLatch TimeUnit)
@@ -22,6 +22,8 @@
 (defprotocol WebSocketSend
   (-send! [x ws] "How to encode content sent to the WebSocket clients"))
 
+(defrecord WebSocketSession [^Session session certs request-path ^CountDownLatch closure-latch])
+
 (extend-protocol WebSocketSend
   (Class/forName "[B")
   (-send! [ba ws]
@@ -29,57 +31,37 @@
 
   ByteBuffer
   (-send! [bb ws]
-    (-> ^WebSocketAdapter ws .getRemote (.sendBytes ^ByteBuffer bb)))
+    (.sendBinary ^Session (:session ws) ^ByteBuffer bb Callback/NOOP))
 
   String
   (-send! [s ws]
-    (-> ^WebSocketAdapter ws .getRemote (.sendString ^String s))))
-
-(definterface ClosureLatchSyncer
-  (^Object awaitClosure []))
+    (.sendText ^Session (:session ws) ^String s Callback/NOOP)))
 
 (extend-protocol WebSocketProtocol
-  WebSocketAdapter
+  WebSocketSession
   (send! [this msg]
     (-send! msg this))
   (close!
     ([this]
-     (log/trace "enter close no arg")
-     ;; Close this side
-     (.close (.getSession ^WebSocketAdapter this))
-     (log/trace "closed session")
-     ;; Then wait for remote side to close
-     (.awaitClosure ^ClosureLatchSyncer this)
-     (log/trace "exit close no arg"))
+     (.close (:session this))
+     (.await (:closure-latch this) 30 TimeUnit/SECONDS))
     ([this code reason]
-     (log/trace "enter close arg code: %d reason \"%s\"" code reason)
-     (.close (.getSession ^WebSocketAdapter this) code reason)
-     (log/trace "closed session")
-     (.awaitClosure ^ClosureLatchSyncer this)
-     (log/trace "exit close no arg")))
+     (.close (:session this) code reason Callback/NOOP)
+     (.await (:closure-latch this) 30 TimeUnit/SECONDS)))
   (disconnect [this]
-    (log/trace "enter disconnect")
-    (when-let [^Session session (.getSession ^WebSocketAdapter this)]
-     (.disconnect session)
-     (log/trace "exit disconnect")))
+    (.disconnect (:session this)))
   (remote-addr [this]
-    (.. this (getSession) (getRemoteAddress)))
+    (.getRemoteSocketAddress (:session this)))
   (ssl? [this]
-    (.. this (getSession) (getUpgradeRequest) (isSecure)))
+    (.isSecure (:session this)))
   (peer-certs [this]
-    (.. this (getCerts)))
+    (:certs this))
   (request-path [this]
-    (.. this (getRequestPath)))
+    (:request-path this))
   (idle-timeout! [this ms]
-    (let [duration-from-ms (Duration/ofMillis ms)]
-      (.. this (getSession) (setIdleTimeout ^Duration duration-from-ms))))
+    (.setIdleTimeout (:session this) (Duration/ofMillis ms)))
   (connected? [this]
-    (. this (isConnected))))
-
-(definterface CertGetter
-  (^Object getCerts [])
-  (^String getRequestPath []))
-
+    (.isOpen (:session this))))
 
 (defn no-handler
   [event & args]
@@ -92,82 +74,62 @@
   (when (not-empty x509certs)
     (.getSubjectX500Principal (first x509certs))))
 
-(schema/defn ^:always-validate proxy-ws-adapter :- WebSocketAdapter
+(schema/defn ^:always-validate proxy-ws-adapter
   [handlers :- WebsocketHandlers
    x509certs :- [X509Certificate]
    requestPath :- String
    closureLatch :- CountDownLatch]
   (let [client-id (swap! client-count inc)
         certname (extract-CN-from-certs x509certs)
+        ws-session-atom (atom nil)
         {:keys [on-connect on-error on-text on-close on-bytes]
          :or {on-connect (partial no-handler :on-connect)
               on-error   (partial no-handler :on-error)
               on-text    (partial no-handler :on-text)
               on-close   (partial no-handler :on-close)
               on-bytes   (partial no-handler :on-bytes)}} handlers]
-    (proxy [WebSocketAdapter CertGetter ClosureLatchSyncer] []
-      (onWebSocketConnect [^Session session]
+    (reify Session$Listener$AutoDemanding
+      (onWebSocketOpen [_this session]
         (log/tracef "%d on-connect certname:%s uri:%s" client-id certname requestPath)
-        (let [^WebSocketAdapter this this]
-          (proxy-super onWebSocketConnect session))
-        (let [on-connect-result (on-connect this)]
-          (log/tracef "%d exiting on-connect" client-id)
-          on-connect-result))
-      (onWebSocketError [^Throwable e]
-        (log/tracef "%d on-error certname:%s uri:%s" client-id certname requestPath)
-        (try
-          (let [^WebSocketAdapter this this]
-              (proxy-super onWebSocketError e))
-          (catch Throwable inner-error
-            (log/error inner-error "Error while proxying to super for exception "e)))
-        (let [on-error-result (on-error this e)]
-          (log/tracef "%d exiting on-error" client-id)
-          on-error-result))
-      (onWebSocketText [^String message]
+        (let [ws (->WebSocketSession session x509certs requestPath closureLatch)]
+          (reset! ws-session-atom ws)
+          (let [result (on-connect ws)]
+            (log/tracef "%d exiting on-connect" client-id)
+            result)))
+      (onWebSocketText [_this message]
         (log/tracef "%d on-text certname:%s uri:%s" client-id certname requestPath)
-        (let [^WebSocketAdapter this this]
-          (proxy-super onWebSocketText message))
-        (let [on-text-result (on-text this message)]
+        (let [result (on-text @ws-session-atom message)]
           (log/tracef "%d exiting on-text" client-id)
-          on-text-result))
-      (onWebSocketClose [statusCode ^String reason]
-        (log/tracef "%d on-close certname:%s uri:%s" client-id certname requestPath)
-        (let [^WebSocketAdapter this this]
-          (proxy-super onWebSocketClose statusCode reason))
-        (.countDown closureLatch)
-        (let [on-close-result (on-close this statusCode reason)]
-          (log/tracef "%d exiting on-close" client-id)
-          on-close-result))
-      (onWebSocketBinary [^bytes payload offset len]
+          result))
+      (onWebSocketBinary [_this payload offset len]
         (log/tracef "%d on-binary certname:%s uri:%s" client-id certname requestPath)
-        (let [^WebSocketAdapter this this]
-          (proxy-super onWebSocketBinary payload offset len))
-        (let [on-bytes-result (on-bytes this payload offset len)]
+        (let [result (on-bytes @ws-session-atom payload offset len)]
           (log/tracef "%d exiting on-binary" client-id)
-          on-bytes-result))
-      (awaitClosure []
-        (try
-          (let [timeout-in-seconds 30]
-            (when-not (.await closureLatch timeout-in-seconds TimeUnit/SECONDS)
-              (log/info (i18n/trs "Timed out after awaiting closure of websocket from remote for {0} seconds at request path {1}." timeout-in-seconds requestPath))))
-          (catch InterruptedException e
-            (log/info e (i18n/trs "Thread was interrupted when awaiting closure of websocket from remote at request path {0}." requestPath)))))
-      (getCerts [] x509certs)
-      (getRequestPath [] requestPath))))
+          result))
+      (onWebSocketClose [_this statusCode reason]
+        (log/tracef "%d on-close certname:%s uri:%s" client-id certname requestPath)
+        (.countDown closureLatch)
+        (let [result (on-close @ws-session-atom statusCode reason)]
+          (log/tracef "%d exiting on-close" client-id)
+          result))
+      (onWebSocketError [_this cause]
+        (log/tracef "%d on-error certname:%s uri:%s" client-id certname requestPath)
+        (let [result (on-error @ws-session-atom cause)]
+          (log/tracef "%d exiting on-error" client-id)
+          result)))))
 
-(schema/defn ^:always-validate proxy-ws-creator :- JettyWebSocketCreator
+(schema/defn ^:always-validate proxy-ws-creator :- WebSocketCreator
   [handlers :- WebsocketHandlers]
   (log/trace "proxy-ws-creator")
-  (reify JettyWebSocketCreator
-    (createWebSocket [_this ^JettyServerUpgradeRequest req ^JettyServerUpgradeResponse _res]
-      (let [x509certs (vec (.. req (getCertificates)))
-            requestPath (.. req (getRequestPath))
-            ;; A simple gate to synchronize closure on server and client.
+  (reify WebSocketCreator
+    (createWebSocket [_this ^ServerUpgradeRequest req ^ServerUpgradeResponse _res ^Callback cb]
+      (let [x509certs (vec (or (.getCertificates req) []))
+            requestPath (str (.getRequestURI req))
             closureLatch (CountDownLatch. 1)]
+        (.succeed cb)
         (proxy-ws-adapter handlers x509certs requestPath closureLatch)))))
 
-(schema/defn JettyWebSocketServletInstance :- JettyWebSocketServlet
-  [handlers]
-  (proxy [JettyWebSocketServlet] []
-    (configure [^JettyWebSocketServletFactory factory]
-        (.setCreator factory (proxy-ws-creator handlers)))))
+(defn configure-websocket-container
+  [context-handler server handlers]
+  (let [container (ServerWebSocketContainer/ensure server context-handler)]
+    (.addMapping container "/*" (proxy-ws-creator handlers))))
