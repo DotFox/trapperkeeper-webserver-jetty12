@@ -14,13 +14,10 @@
                  [org.clojure/java.jmx "1.0.0"]
                  [org.clojure/tools.logging "1.2.4"]
 
-                 [org.flatland/ordered "1.5.9"]
-
                  [jakarta.servlet/jakarta.servlet-api "6.0.0"]
                  ;; Jetty Webserver
                  [org.eclipse.jetty/jetty-server "12.0.16"]
                  [org.eclipse.jetty.ee10/jetty-ee10-servlet "12.0.16"]
-                 [org.eclipse.jetty.ee10/jetty-ee10-servlets "12.0.16"]
                  [org.eclipse.jetty.ee10/jetty-ee10-webapp "12.0.16"]
                  [org.eclipse.jetty.ee10/jetty-ee10-proxy "12.0.16"]
                  [org.eclipse.jetty/jetty-jmx "12.0.16"]
@@ -81,8 +78,9 @@
              :dev-only {:dependencies [[org.bouncycastle/bcpkix-jdk18on "1.74"]]
                         :jvm-opts ["-Djava.util.logging.config.file=dev-resources/logging.properties"]}
              :dev [:shared :dev-only]
-             :fips-only {:dependencies [[org.bouncycastle/bcpkix-fips "1.0.7"]
-                                        [org.bouncycastle/bc-fips "1.0.2.5"]
+             :fips-only {:managed-dependencies [[org.bouncycastle/bc-fips "1.0.2.6"]]
+                         :dependencies [[org.bouncycastle/bcpkix-fips "1.0.7"]
+                                        [org.bouncycastle/bc-fips "1.0.2.6"]
                                         [org.bouncycastle/bctls-fips "1.0.19"]]
                          ;; this only ensures that we run with the proper profiles
                          ;; during testing. This JVM opt will be set in the puppet module
