@@ -143,6 +143,19 @@
        (is (= (:status response) 200))
        (is (= (:body response) hello-body))))))
 
+(defn await-result
+  [result timeout-ms description]
+  (let [timeout-value ::timeout
+        value (deref result timeout-ms timeout-value)]
+    (is (not= timeout-value value)
+        (str "Timed out waiting for " description))
+    value))
+
+(defn request-failed?
+  [response]
+  (or (some? (:error response))
+      (not= 200 (:status response))))
+
 (deftest basic-ring-test
   (testing "ring request over http succeeds"
     (validate-ring-handler
@@ -723,27 +736,34 @@
     (with-app-with-config
       app
       [jetty12-service]
-      {:webserver {:port 8080 :shutdown-timeout-seconds 10}}
+      {:webserver {:port 8080
+                   :shutdown-timeout-seconds 10
+                   :gzip-enable false}}
       (let [s (tk-app/get-service app :WebserverService)
             add-ring-handler   (partial add-ring-handler s)
             in-request-handler (promise)
             ring-handler       (fn [_]
                                  (deliver in-request-handler true)
-                                 (Thread/sleep 3000)
+                                 (Thread/sleep 1000)
                                  {:status 200 :body "Hello, World!"})]
         (add-ring-handler ring-handler "/hello")
-        (with-open [async-client (async/create-client {})]
+        (with-open [async-client (async/create-client {:socket-timeout-milliseconds 30000})]
           (let [response (http-client-common/get async-client "http://localhost:8080/hello" {:as :text})]
             @in-request-handler
             (tk-app/stop app)
-            (is (= (:status @response) 200))
-            (is (= (:body @response) "Hello, World!")))))))
+            (let [response (await-result response 15000 "graceful shutdown response")]
+              (is (nil? (:error response))
+                  (str "Unexpected request error during graceful shutdown: " (:error response)))
+              (is (= (:status response) 200))
+              (is (= (:body response) "Hello, World!"))))))))
 
   (testing "jetty12's stop timeout can be changed from config"
     (with-app-with-config
       app
       [jetty12-service]
-      {:webserver {:port 8080 :shutdown-timeout-seconds 1}}
+      {:webserver {:port 8080
+                   :shutdown-timeout-seconds 1
+                   :gzip-enable false}}
       (let [s (tk-app/get-service app :WebserverService)
             add-ring-handler   (partial add-ring-handler s)
             in-request-handler (promise)
@@ -752,12 +772,14 @@
                                  (Thread/sleep 2000)
                                  {:status 200 :body "Hello, World!"})]
         (add-ring-handler ring-handler "/hello")
-        (with-open [async-client (async/create-client {})]
+        (with-open [async-client (async/create-client {:socket-timeout-milliseconds 30000})]
           (let [response (http-client-common/get async-client "http://localhost:8080/hello" {:as :text})]
             @in-request-handler
             (tk-log-testutils/with-test-logging
               (tk-app/stop app))
-            (is (not (nil? (:error @response)))))))))
+            (let [response (await-result response 15000 "request interrupted after shutdown timeout")]
+              (is (request-failed? response)
+                  (str "Expected in-flight request to fail after stop timeout expired, got: " response))))))))
 
 ; Per [TK-437](https://tickets.puppetlabs.com/browse/TK-437) we've been having issues
 ; with this test randomly hanging, but the fixes applied for TK-437 didn't seem to resolve
@@ -837,16 +859,21 @@
          app
          [jetty12-service
           sleepy-service]
-         {:webserver {:port 8080 :shutdown-timeout-seconds 1}}
-         (with-open [async-client (async/create-client {})]
+         {:webserver {:port 8080
+                      :shutdown-timeout-seconds 1
+                      :gzip-enable false}}
+         (with-open [async-client (async/create-client {:socket-timeout-milliseconds 30000})]
            (let [response (http-client-common/get async-client "http://localhost:8080/hi_world" {:as :text})]
              @in-request-handler?
              (tk-app/restart app)
-             (is (not (nil? (:error @response)))))
+             (let [response (await-result response 15000 "request interrupted during restart")]
+               (is (request-failed? response)
+                   (str "Expected in-flight request to fail during restart, got: " response))))
            (deliver unblock-request? true)
            (let [response (http-client-common/get async-client "http://localhost:8080/hi_world" {:as :text})]
-             (is (= 200 (:status @response)))
-             (is (= hello-body (:body @response))))))))))
+             (let [response (await-result response 15000 "post-restart request")]
+               (is (= 200 (:status response)))
+               (is (= hello-body (:body response)))))))))))
 
 (deftest double-stop-test
   (testing "if the stop lifecycle is called more than once, we handle that gracefully and quietly"
