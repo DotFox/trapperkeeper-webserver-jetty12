@@ -1,8 +1,8 @@
-(def jetty-10-version "10.0.20")
+(def jetty-12-version "12.0.16")
 
-(defproject com.puppetlabs/trapperkeeper-webserver-jetty10 "1.0.19-SNAPSHOT"
-  :description "A jetty10-based webserver implementation for use with the puppetlabs/trapperkeeper service framework."
-  :url "https://github.com/puppetlabs/trapperkeeper-webserver-jetty10"
+(defproject com.puppetlabs/trapperkeeper-webserver-jetty12 "1.0.19-SNAPSHOT"
+  :description "A jetty12-based webserver implementation for use with the puppetlabs/trapperkeeper service framework."
+  :url "https://github.com/dotfox/trapperkeeper-webserver-jetty12"
   :license {:name "Apache License, Version 2.0"
             :url "http://www.apache.org/licenses/LICENSE-2.0"}
 
@@ -19,27 +19,25 @@
                  [org.clojure/java.jmx]
                  [org.clojure/tools.logging]
 
-                 [org.codehaus.janino/janino]
                  [org.flatland/ordered "1.5.9"]
 
-                 [javax.servlet/javax.servlet-api "4.0.1"]
+                 [jakarta.servlet/jakarta.servlet-api "6.0.0"]
                  ;; Jetty Webserver
-                 [org.eclipse.jetty/jetty-server ~jetty-10-version]
-                 [org.eclipse.jetty/jetty-servlet ~jetty-10-version]
-                 [org.eclipse.jetty/jetty-servlets ~jetty-10-version]
-                 [org.eclipse.jetty/jetty-webapp ~jetty-10-version]
-                 [org.eclipse.jetty/jetty-proxy ~jetty-10-version]
-                 [org.eclipse.jetty/jetty-jmx ~jetty-10-version]
-                 [org.eclipse.jetty.websocket/websocket-jetty-server ~jetty-10-version]
+                 [org.eclipse.jetty/jetty-server ~jetty-12-version]
+                 [org.eclipse.jetty.ee10/jetty-ee10-servlet ~jetty-12-version]
+                 [org.eclipse.jetty.ee10/jetty-ee10-servlets ~jetty-12-version]
+                 [org.eclipse.jetty.ee10/jetty-ee10-webapp ~jetty-12-version]
+                 [org.eclipse.jetty.ee10/jetty-ee10-proxy ~jetty-12-version]
+                 [org.eclipse.jetty/jetty-jmx ~jetty-12-version]
+                 [org.eclipse.jetty.websocket/jetty-websocket-jetty-server ~jetty-12-version]
                  ;; used in pcp-client
-                 [org.eclipse.jetty.websocket/websocket-jetty-client ~jetty-10-version]
-                 [org.eclipse.jetty.websocket/websocket-jetty-api ~jetty-10-version]
+                 [org.eclipse.jetty.websocket/jetty-websocket-jetty-client ~jetty-12-version]
+                 [org.eclipse.jetty.websocket/jetty-websocket-jetty-api ~jetty-12-version]
 
 
                  [prismatic/schema]
-                 [ring/ring-servlet]
+                 [org.ring-clojure/ring-jakarta-servlet "1.12.2"]
                  [ring/ring-codec]
-                 [ch.qos.logback/logback-access]
                  [ch.qos.logback/logback-core]
                  [ch.qos.logback/logback-classic]
 
@@ -96,11 +94,10 @@
                          ;; that sets up the JVM classpaths during installation.
                          :jvm-opts ~(let [version (System/getProperty "java.version")
                                           [major minor _] (clojure.string/split version #"\.")
-                                          unsupported-ex (ex-info "Unsupported major Java version. Expects 11 or 17."
+                                          unsupported-ex (ex-info "Unsupported major Java version. Expects 17+."
                                                                   {:major major
                                                                    :minor minor})]
                                       (condp = (java.lang.Integer/parseInt major)
-                                        11 ["-Djava.security.properties==dev-resources/jdk11-fips-security"]
                                         17 ["-Djava.security.properties==dev-resources/jdk17-fips-security"]
                                         (throw unsupported-ex)))}
              :fips [:shared :fips-only]
