@@ -60,13 +60,13 @@
 
   :plugins [[puppetlabs/i18n "0.8.0"]]
 
-  :deploy-repositories [["releases" {:url deploy-releases-url
-                                      :username deploy-username
-                                      :password deploy-password
-                                      :sign-releases false}]
-                         ["snapshots" {:url deploy-snapshots-url
-                                       :username deploy-username
-                                       :password deploy-password}]]
+  :deploy-repositories [["releases" {:url ~deploy-releases-url
+                                     :username ~deploy-username
+                                     :password ~deploy-password
+                                     :sign-releases false}]
+                        ["snapshots" {:url ~deploy-snapshots-url
+                                      :username ~deploy-username
+                                      :password ~deploy-password}]]
 
   ;; By declaring a classifier here and a corresponding profile below we'll get an additional jar
   ;; during `lein jar` that has all the code in the test/ directory. Downstream projects can then
