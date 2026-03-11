@@ -1,6 +1,7 @@
 (ns puppetlabs.trapperkeeper.services.webserver.jetty12-websockets
   (:import (clojure.lang IFn)
-           (org.eclipse.jetty.websocket.api Session Session$Listener$AutoDemanding Callback)
+           (org.eclipse.jetty.websocket.api Session Session$Listener$AutoDemanding)
+           (org.eclipse.jetty.websocket.api Callback)
            (org.eclipse.jetty.websocket.server ServerUpgradeRequest ServerUpgradeResponse ServerWebSocketContainer WebSocketCreator)
            (java.security.cert X509Certificate)
            (java.time Duration)
@@ -101,11 +102,13 @@
         (let [result (on-text @ws-session-atom message)]
           (log/tracef "%d exiting on-text" client-id)
           result))
-      (onWebSocketBinary [_this payload offset len]
+      (^void onWebSocketBinary [_this ^ByteBuffer payload ^Callback callback]
         (log/tracef "%d on-binary certname:%s uri:%s" client-id certname requestPath)
-        (let [result (on-bytes @ws-session-atom payload offset len)]
-          (log/tracef "%d exiting on-binary" client-id)
-          result))
+        (let [arr (byte-array (.remaining payload))
+              _ (.get payload arr)]
+          (on-bytes @ws-session-atom arr 0 (alength arr))
+          (.succeed callback)
+          (log/tracef "%d exiting on-binary" client-id)))
       (onWebSocketClose [_this statusCode reason]
         (log/tracef "%d on-close certname:%s uri:%s" client-id certname requestPath)
         (.countDown closureLatch)
@@ -122,11 +125,13 @@
   [handlers :- WebsocketHandlers]
   (log/trace "proxy-ws-creator")
   (reify WebSocketCreator
-    (createWebSocket [_this ^ServerUpgradeRequest req ^ServerUpgradeResponse _res ^Callback cb]
-      (let [x509certs (vec (or (.getCertificates req) []))
-            requestPath (str (.getRequestURI req))
+    (createWebSocket [_this req _res _cb]
+      (let [ssl-data (.getAttribute req "org.eclipse.jetty.server.SecureRequestCustomizer$SslSessionData")
+            x509certs (vec (if ssl-data
+                             (or (.peerCertificates ssl-data) [])
+                             []))
+            requestPath (str (org.eclipse.jetty.server.Request/getPathInContext req))
             closureLatch (CountDownLatch. 1)]
-        (.succeed cb)
         (proxy-ws-adapter handlers x509certs requestPath closureLatch)))))
 
 (defn configure-websocket-container

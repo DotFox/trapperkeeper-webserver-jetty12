@@ -33,10 +33,15 @@
   (let [percent-decoded-uri-path (-> request
                                      (.getRequestURI)
                                      (URIUtil/decodePath))
-        canonicalized-uri-path (URIUtil/canonicalPath percent-decoded-uri-path)]
+        ;; In Jetty 12, canonicalPath also compacts slashes and handles
+        ;; semicolons, so we can't use length comparison to detect relative
+        ;; segments. Instead, check if canonicalPath returns null (path goes
+        ;; above root) or if the decoded path contains .. or . segments.
+        canonicalized-uri-path (URIUtil/canonicalPath percent-decoded-uri-path)
+        has-relative-segments? (re-find #"(?:^|/)\.\./|(?:^|/)\.\.$|(?:^|/)\./|(?:^|/)\.$"
+                                        percent-decoded-uri-path)]
     (if (or (nil? canonicalized-uri-path)
-            (not= (.length percent-decoded-uri-path)
-                  (.length canonicalized-uri-path)))
+            has-relative-segments?)
       (throw (IllegalArgumentException.
                ^String (i18n/trs "Invalid relative path (.. or .) in: {0}"
                                  percent-decoded-uri-path)))

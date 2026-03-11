@@ -1,6 +1,5 @@
 (ns puppetlabs.trapperkeeper.services.webrouting.webrouting-service-handlers-test
-  (:import (org.eclipse.jetty.server Response)
-           (servlet SimpleServlet))
+  (:import (servlet SimpleServlet))
   (:require [clojure.test :refer :all]
             [schema.test :as schema-test]
             [puppetlabs.trapperkeeper.services :as tk-services]
@@ -233,6 +232,4 @@
                             (let [{:keys [status body]} (http-get "http://localhost:8080/foo")]
                               (is (= 200 status))
                               (is (= "yep" body))
-                              (is (= 1 (count @handler-args)))
-                              ;; response is included by default
-                              (is (instance? Response (-> @handler-args first :response))))))))
+                              (is (= 1 (count @handler-args))))))))

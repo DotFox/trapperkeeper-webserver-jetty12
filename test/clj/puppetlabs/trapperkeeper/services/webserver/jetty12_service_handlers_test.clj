@@ -451,8 +451,10 @@
           (add-ring-handler ring-handler path {:redirect-if-no-trailing-slash true})
           (let [response (http-get "http://localhost:8080/hello" {:as :text
                                                                   :follow-redirects false})]
-            (is (= (:status response) 302))
-            (is (= (get-in response [:headers "location"]) "http://localhost:8080/hello/"))
+            ;; Jetty 12 uses 301 (Moved Permanently) for trailing slash redirects
+            ;; and returns relative location paths
+            (is (= (:status response) 301))
+            (is (= (get-in response [:headers "location"]) "/hello/"))
             (is (= (get-in response [:opts :url]) "http://localhost:8080/hello"))))))))
 
 (defn ring-handler-echoing-request-uri
@@ -471,8 +473,11 @@
                            (ring-handler-echoing-request-uri)
                            "/hello"
                            {:normalize-request-uri true})
+         ;; In Jetty 12, encoded path separators (%2f) are not decoded for
+         ;; routing, so we test with encoded non-separator characters instead.
+         ;; The context path boundary uses real '/' separators.
          (testing "uri with encoded characters is properly decoded"
-           (let [response (http-get "http://localhost:8080/hello%2f%2f%77o%72l%64"
+           (let [response (http-get "http://localhost:8080/hello/%77%6f%72%6c%64"
                                     {:as :text})]
              (is (= (:status response) 200))
              (is (= (:body response) "/hello/world"))))
@@ -500,11 +505,13 @@
                            (ring-handler-echoing-request-uri)
                            "/hello"
                            {:normalize-request-uri false})
-         (testing "uri with encoded characters is properly decoded"
-           (let [response (http-get "http://localhost:8080/hello%2f%2f%77o%72l%64"
+         ;; In Jetty 12, encoded path separators (%2f) are not decoded for
+         ;; routing, so we test with encoded non-separator characters instead.
+         (testing "uri with encoded characters is preserved when normalization disabled"
+           (let [response (http-get "http://localhost:8080/hello/%77%6f%72%6c%64"
                                     {:as :text})]
              (is (= (:status response) 200))
-             (is (= (:body response) "/hello%2f%2f%77o%72l%64"))))
+             (is (= (:body response) "/hello/%77%6f%72%6c%64"))))
          (testing "uri with relative path above root is rejected"
            (let [response
                  (http-get
@@ -540,8 +547,10 @@
           (servlet-echoing-request-uri)
           "/hello"
           {:normalize-request-uri true})
+         ;; In Jetty 12, encoded path separators (%2f) are not decoded for
+         ;; routing, so we test with encoded non-separator characters instead.
          (testing "uri with encoded characters is properly decoded"
-           (let [response (http-get "http://localhost:8080/hello%2f%2f%77o%72l%64"
+           (let [response (http-get "http://localhost:8080/hello/%77%6f%72%6c%64"
                                     {:as :text})]
              (is (= (:status response) 200))
              (is (= (:body response) "/hello/world"))))
@@ -570,11 +579,13 @@
           (servlet-echoing-request-uri)
           "/hello"
           {:normalize-request-uri false})
+         ;; In Jetty 12, encoded path separators (%2f) are not decoded for
+         ;; routing, so we test with encoded non-separator characters instead.
          (testing "uri with encoded characters is not decoded"
-           (let [response (http-get "http://localhost:8080/hello%2f%2f%77o%72l%64"
+           (let [response (http-get "http://localhost:8080/hello/%77%6f%72%6c%64"
                                     {:as :text})]
              (is (= (:status response) 200))
-             (is (= (:body response) "/hello%2f%2f%77o%72l%64"))))
+             (is (= (:body response) "/hello/%77%6f%72%6c%64"))))
          (testing "uri with relative path above root is rejected"
            (let [response
                  (http-get

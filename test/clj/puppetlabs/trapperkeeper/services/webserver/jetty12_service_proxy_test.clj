@@ -147,7 +147,11 @@
 
 (defn callback-fn
   [proxy-req req]
-  (.header proxy-req "x-fancy-proxy-header" "!!!"))
+  (.headers proxy-req
+            (reify java.util.function.Consumer
+              (accept [_ headers]
+                (.put ^org.eclipse.jetty.http.HttpFields$Mutable headers
+                      "x-fancy-proxy-header" "!!!")))))
 
 (deftest test-basic-proxy-support
   (testing "basic proxy support when proxy handler registered after server start"

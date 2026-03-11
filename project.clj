@@ -94,12 +94,11 @@
                          ;; that sets up the JVM classpaths during installation.
                          :jvm-opts ~(let [version (System/getProperty "java.version")
                                           [major minor _] (clojure.string/split version #"\.")
-                                          unsupported-ex (ex-info "Unsupported major Java version. Expects 17+."
-                                                                  {:major major
-                                                                   :minor minor})]
-                                      (condp = (java.lang.Integer/parseInt major)
-                                        17 ["-Djava.security.properties==dev-resources/jdk17-fips-security"]
-                                        (throw unsupported-ex)))}
+                                          major-int (java.lang.Integer/parseInt major)]
+                                      (if (>= major-int 17)
+                                        ["-Djava.security.properties==dev-resources/jdk17-fips-security"]
+                                        (throw (ex-info "Unsupported major Java version. Expects 17+."
+                                                        {:major major :minor minor}))))}
              :fips [:shared :fips-only]
 
              ;; per https://github.com/technomancy/leiningen/issues/1907

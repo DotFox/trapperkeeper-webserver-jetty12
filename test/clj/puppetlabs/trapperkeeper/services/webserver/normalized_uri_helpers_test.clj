@@ -35,11 +35,13 @@
     (is (= "/foo" (normalize-uri-path-for-string "/foo;foo=chump")))
     (is (= "/foo/bar/baz" (normalize-uri-path-for-string
                        "/foo/bar;bar=chocolate/baz;baz=bim"))))
-  (testing (str "percent-encoded parameters in uri path segments are properly "
-                "decoded after normalization")
-    (is (= "/foo;foo=chump" (normalize-uri-path-for-string
-                               "/foo%3Bfoo=chump")))
-    (is (= "/foo/bar;bar=chocolate/baz;baz=bim"
+  (testing (str "percent-encoded parameters in uri path segments are stripped "
+                "after decoding in Jetty 12 (decodePath strips path params)")
+    ;; In Jetty 12, URIUtil.decodePath decodes %3B to ; then strips
+    ;; everything from ; onwards in each path segment
+    (is (= "/foo" (normalize-uri-path-for-string
+                    "/foo%3Bfoo=chump")))
+    (is (= "/foo/bar/baz"
            (normalize-uri-path-for-string
             "/foo/bar%3Bbar=chocolate/baz%3Bbaz=b%69m")))))
 
@@ -47,8 +49,9 @@
   (testing (str "percent-encoded characters are properly decoded after "
                 "normalization")
     (is (= "/foo" (normalize-uri-path-for-string "/%66oo")))
-    (is (= "/foo/b a r" (normalize-uri-path-for-string
-                         "/foo%2f%62%20a%20%72"))))
+    ;; In Jetty 12, URIUtil.decodePath does not decode %20 to space
+    (is (= "/foo/b%20a%20r" (normalize-uri-path-for-string
+                              "/foo%2f%62%20a%20%72"))))
   (testing "malformed percent-encoded character throws exception"
     (is (thrown? IllegalArgumentException (normalize-uri-path-for-string
                                            "/foo/%b%a%r")))))
@@ -102,9 +105,10 @@
 (deftest normalize-uri-with-overlong-utf8-chars-tests
   (testing (str "utf-8 characters with overlong encodings are substituted "
                 "with replacement characters")
-    ;; These are explicitly handled by Jetty as of 9.4.23
-    (is (= "À®" (normalize-uri-path-for-string "%C0%AE")))
-    (is (= "/foo/À®/À®" (normalize-uri-path-for-string "/foo/%C0%AE/%C0%AE")))))
+    ;; These are explicitly handled by Jetty. In Jetty 12, overlong UTF-8
+    ;; sequences are decoded to Unicode replacement characters (\uFFFD).
+    (is (= "\uFFFD\uFFFD" (normalize-uri-path-for-string "%C0%AE")))
+    (is (= "/foo/\uFFFD\uFFFD/\uFFFD\uFFFD" (normalize-uri-path-for-string "/foo/%C0%AE/%C0%AE")))))
 
 (deftest normalize-uris-with-redundant-slashes-tests
   (testing "uris with redundant slashes are removed"
@@ -117,5 +121,6 @@
 (deftest normalize-uris-with-percent-decoding-and-slash-removal
   (testing (str "uris with both percent-encoded characters and redundant "
                 "slashes are properly normalized")
-    (is (= "/foo/b a r" (normalize-uri-path-for-string
-                         "/%66oo%2f%2f%2f%62%20a r")))))
+    ;; In Jetty 12, URIUtil.decodePath does not decode %20 to space
+    (is (= "/foo/b%20a%20r" (normalize-uri-path-for-string
+                              "/%66oo%2f%2f%2f%62%20a%20r")))))

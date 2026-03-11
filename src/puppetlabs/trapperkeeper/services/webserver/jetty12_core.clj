@@ -22,8 +22,7 @@
            (java.util.concurrent TimeoutException ExecutionException)
            (jakarta.servlet Servlet ServletContextListener)
            (org.eclipse.jetty.client HttpClient RedirectProtocolHandler)
-           (org.eclipse.jetty.client.dynamic HttpClientTransportDynamic)
-           (org.eclipse.jetty.client.http HttpClientConnectionFactory)
+           (org.eclipse.jetty.client.transport HttpClientTransportDynamic HttpClientConnectionFactory)
            (org.eclipse.jetty.http HttpMethod MimeTypes UriCompliance)
            (org.eclipse.jetty.io ClientConnectionFactory$Info ClientConnector)
            (org.eclipse.jetty.jmx MBeanContainer)
@@ -469,7 +468,7 @@
   (-> (filter #(or (.startsWith ^String % "image/")
                    (.startsWith ^String % "audio/")
                    (.startsWith ^String % "video/"))
-              (.getMimeTypes (MimeTypes/getDefaults)))
+              (vals (.getMimeMap MimeTypes/DEFAULTS)))
       (concat ["application/compress" "application/zip" "application/gzip" "text/event-stream"])
       (into-array)))
 
@@ -494,10 +493,10 @@
     (.setAllowNullPathInContext ^ServletContextHandler handler (not enable-trailing-slash-redirect?)))
   (.addHandler (:handlers webserver-context) handler)
   ;; If this handler is being added after the server has been started, we
-  ;; need to manually start the handler.  In Jetty 12, handlers added via
-  ;; addHandler are auto-managed by the ContextHandlerCollection.
-  (if-let [server (.getServer handler)]
-    (when (and (.isRunning server) (not (.isRunning handler)))
+  ;; need to manually start the handler.  In Jetty 12, dynamically added
+  ;; handlers are not auto-started by ContextHandlerCollection.
+  (let [server (:server webserver-context)]
+    (when (and server (.isRunning server) (not (.isRunning handler)))
       (.start handler)))
   handler)
 
@@ -597,7 +596,7 @@
    max-size :- schema/Int]
   (proxy [Handler$Wrapper] [handler]
     (handle [request response callback]
-      (let [request-size (Request/getLength request)]
+      (let [request-size (.getLongField (.getHeaders request) "Content-Length")]
         (if (> request-size max-size)
           (do
             (Response/writeError request response callback 413)
@@ -613,7 +612,8 @@
   "Create a webserver-context which contains a ContextHandlerCollection
   which can accept the addition of new handlers before the webserver is started."
   []
-  (let [^ContextHandlerCollection chc (ContextHandlerCollection.)]
+  (let [^ContextHandlerCollection chc (doto (ContextHandlerCollection. (into-array ContextHandler []))
+                                        (.setDynamic true))]
     {:handlers chc
      :state (atom {:endpoints {}
                    :mbean-container nil
@@ -757,22 +757,48 @@
     context-path :- schema/Str
     context-listeners :- (schema/maybe [ServletContextListener])
     options]
-   (let [handler (ServletContextHandler. nil context-path ServletContextHandler/NO_SESSIONS)
-         follow-links? (:follow-links? options)
+   (let [follow-links? (:follow-links? options)
          enable-trailing-slash-redirect? (:enable-trailing-slash-redirect? options)
          normalize-request-uri? (:normalize-request-uri? options)
-         resource (.newResource (ResourceFactory/root)
-                                (java.nio.file.Path/of base-path (into-array String [])))]
-     (.setBaseResource handler resource)
-     (when-not follow-links?
-       (.clearAliasChecks handler))
-     ;; register servlet context listeners (if any)
-     (when-not (nil? context-listeners)
-       (dorun (map #(.addEventListener handler %) context-listeners)))
-     (.addServlet handler (ServletHolder. (DefaultServlet.)) "/")
-     (when normalize-request-uri?
-       (normalized-uri-helpers/add-normalized-uri-filter-to-servlet-handler!
-        handler))
+         abs-path (.normalize (.toAbsolutePath (java.nio.file.Path/of base-path (into-array String []))))
+         handler (if (not-empty context-listeners)
+                   ;; Use ServletContextHandler when context listeners are needed
+                   (let [sch (ServletContextHandler. context-path ServletContextHandler/NO_SESSIONS)
+                         resource (.newResource (ResourceFactory/of sch) abs-path)]
+                     (.setBaseResource sch resource)
+                     (when follow-links?
+                       (.addAliasCheck sch (org.eclipse.jetty.server.SymlinkAllowedResourceAliasChecker. sch)))
+                     (dorun (map #(.addEventListener sch %) context-listeners))
+                     (.addServlet sch (ServletHolder. (DefaultServlet.)) "/")
+                     (when normalize-request-uri?
+                       (normalized-uri-helpers/add-normalized-uri-filter-to-servlet-handler! sch))
+                     sch)
+                   ;; Use core ContextHandler + ResourceHandler for simple static content
+                   (let [ctx (ContextHandler. context-path)
+                         resource (.newResource (ResourceFactory/of ctx) abs-path)
+                         rh (org.eclipse.jetty.server.handler.ResourceHandler.)]
+                     (.setBaseResource ctx resource)
+                     (if follow-links?
+                       (.setHandler ctx rh)
+                       ;; Wrap ResourceHandler with a symlink-blocking handler
+                       (let [blocker (proxy [org.eclipse.jetty.server.Handler$Wrapper] []
+                                      (handle [request response callback]
+                                        (let [path-in-ctx (org.eclipse.jetty.server.Request/getPathInContext request)
+                                              sub-path (if (.startsWith path-in-ctx "/")
+                                                         (subs path-in-ctx 1)
+                                                         path-in-ctx)
+                                              resolved (when (seq sub-path)
+                                                         (.resolve (.getBaseResource ctx) sub-path))]
+                                          (if (and resolved
+                                                   (.exists resolved)
+                                                   (java.nio.file.Files/isSymbolicLink (.getPath resolved)))
+                                            (do
+                                              (org.eclipse.jetty.server.Response/writeError request response callback 404)
+                                              true)
+                                            (proxy-super handle request response callback)))))]
+                         (.setHandler blocker rh)
+                         (.setHandler ctx blocker)))
+                     ctx))]
      (add-handler webserver-context handler enable-trailing-slash-redirect?))))
 
 (schema/defn ^:always-validate
@@ -798,11 +824,31 @@
    path :- schema/Str
    enable-trailing-slash-redirect? :- schema/Bool
    normalize-request-uri? :- schema/Bool]
-  (let [ctxt-handler (doto (ContextHandler.)
-                       (.setContextPath path))
+  (let [ws-creator (websockets/proxy-ws-creator handlers)
+        ws-configurer (reify java.util.function.Consumer
+                        (accept [_ container]
+                          (.addMapping container "/*" ws-creator)))
         server (:server webserver-context)
-        container (ServerWebSocketContainer/ensure server ctxt-handler)]
-    (.addMapping container "/*" (websockets/proxy-ws-creator handlers))
+        ctxt-handler (doto (ContextHandler.)
+                       (.setContextPath path)
+                       (.setAllowNullPathInContext (not enable-trailing-slash-redirect?)))]
+    (if server
+      ;; Server exists — set up WebSocket handler immediately
+      (do
+        (.setServer ctxt-handler server)
+        (let [upgrade-handler (org.eclipse.jetty.websocket.server.WebSocketUpgradeHandler/from
+                                server ctxt-handler ws-configurer)]
+          (.setHandler ctxt-handler upgrade-handler)))
+      ;; Server not yet created (handler added during init) — defer WebSocket
+      ;; setup until the context handler starts and has a server reference
+      (.addEventListener ctxt-handler
+        (reify org.eclipse.jetty.util.component.LifeCycle$Listener
+          (lifeCycleStarting [_ _event]
+            (let [s (.getServer ctxt-handler)
+                  container (ServerWebSocketContainer/ensure s ctxt-handler)
+                  upgrade-handler (org.eclipse.jetty.websocket.server.WebSocketUpgradeHandler.
+                                    container ws-configurer)]
+              (.setHandler ctxt-handler upgrade-handler))))))
     (add-handler webserver-context ctxt-handler enable-trailing-slash-redirect?)))
 
 (schema/defn ^:always-validate
